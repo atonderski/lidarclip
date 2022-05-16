@@ -1,3 +1,6 @@
 [submodule "SST"]
 	path = SST
 	url = git@github.com:TuSimple/SST.git
+[submodule "once_devkit"]
+	path = once_devkit
+	url = git@github.com:once-for-auto-driving/once_devkit.git
