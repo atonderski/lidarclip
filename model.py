@@ -5,7 +5,6 @@ from torch import nn
 
 
 def build_sst(config_path):
-    config_path = "SST/configs/sst_refactor/sst_encoder_only.py"
     cfg = Config.fromfile(config_path)
     model = build_model(cfg.model, train_cfg=cfg.get("train_cfg"), test_cfg=cfg.get("test_cfg"))
     model.init_weights()
@@ -19,6 +18,6 @@ class LidarEncoder(nn.Module):
         self._pooler = build_pooler()
 
     def forward(self, point_cloud):
-        lidar_features = self._sst.extract_feat(point_cloud)
+        lidar_features = self._sst.extract_feat(point_cloud, None)
         pooled_feature = self._pooler(lidar_features)
         return pooled_feature
