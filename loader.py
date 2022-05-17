@@ -4,10 +4,12 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
-from torch.utils.data import Dataset
 from tqdm import tqdm
 
+from torch.utils.data import Dataset
+
 from once_devkit.once import ONCE
+
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 
@@ -75,9 +77,7 @@ def demo_dataset():
     plt.imshow(image)
     plt.show()
     plt.figure(figsize=(10, 10), dpi=200)
-    plt.scatter(
-        lidar[:, 0], lidar[:, 2], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm"
-    )
+    plt.scatter(lidar[:, 0], lidar[:, 2], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
     plt.axis("equal")
     plt.xlim(-10, 10)
     plt.ylim(0, 40)

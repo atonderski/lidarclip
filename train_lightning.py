@@ -1,10 +1,12 @@
-import clip
 import pytorch_lightning as pl
-import torch
-from clip.model import CLIP
 from pytorch_lightning.loggers import WandbLogger
+
+import torch
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
+
+import clip
+from clip.model import CLIP
 
 from loader import OnceImageLidarDataset
 from model import LidarEncoder

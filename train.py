@@ -1,6 +1,7 @@
-import clip
 import torch
 from torch.nn import functional as F
+
+import clip
 
 from model import LidarEncoder
 

@@ -1,14 +1,13 @@
 from mmcv import Config
 from mmdet3d.models import build_model
+
 from torch import nn
 
 
 def build_sst(config_path):
     config_path = "SST/configs/sst_refactor/sst_encoder_only.py"
     cfg = Config.fromfile(config_path)
-    model = build_model(
-        cfg.model, train_cfg=cfg.get("train_cfg"), test_cfg=cfg.get("test_cfg")
-    )
+    model = build_model(cfg.model, train_cfg=cfg.get("train_cfg"), test_cfg=cfg.get("test_cfg"))
     model.init_weights()
     return model
 
