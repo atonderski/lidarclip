@@ -46,14 +46,15 @@ class OnceImageLidarDataset(Dataset):
         point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
         calib = frame_info['calib'][cam_name]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
+        # TODO: maybe crop cloud
         return image, point_cloud
 
     def _transform_lidar_to_cam(self, points_lidar, calibration):
-        cam_2_velo = calibration['cam_to_velo']
+        cam_2_lidar = calibration['cam_to_velo']
         point_xyz = points_lidar[:, :3]
         points_homo = np.hstack(
             [points_lidar[:, :3], np.ones(point_xyz.shape[0], dtype=np.float32).reshape((-1, 1))])
-        points_cam = np.dot(points_homo, np.linalg.inv(cam_2_velo).T)
+        points_cam = np.dot(points_homo, np.linalg.inv(cam_2_lidar).T)
         point_cam_with_reflectance = np.hstack([points_cam[:, :3], points_lidar[:, 3:]])
         return point_cam_with_reflectance
 
