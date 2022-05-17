@@ -1,6 +1,6 @@
 import os
 from os.path import join
-from typing import Tuple, List, Dict
+from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
@@ -8,7 +8,6 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from once_devkit.once import ONCE
-
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 
@@ -44,16 +43,20 @@ class OnceImageLidarDataset(Dataset):
         if self._img_transform:
             image = self._img_transform(image)
         point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
-        calib = frame_info['calib'][cam_name]
+        calib = frame_info["calib"][cam_name]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
         # TODO: maybe crop cloud
         return image, point_cloud
 
     def _transform_lidar_to_cam(self, points_lidar, calibration):
-        cam_2_lidar = calibration['cam_to_velo']
+        cam_2_lidar = calibration["cam_to_velo"]
         point_xyz = points_lidar[:, :3]
         points_homo = np.hstack(
-            [points_lidar[:, :3], np.ones(point_xyz.shape[0], dtype=np.float32).reshape((-1, 1))])
+            [
+                points_lidar[:, :3],
+                np.ones(point_xyz.shape[0], dtype=np.float32).reshape((-1, 1)),
+            ]
+        )
         points_cam = np.dot(points_homo, np.linalg.inv(cam_2_lidar).T)
         point_cam_with_reflectance = np.hstack([points_cam[:, :3], points_lidar[:, 3:]])
         return point_cam_with_reflectance
@@ -71,9 +74,11 @@ def demo_dataset():
     image, lidar = dataset[0]
     plt.imshow(image)
     plt.show()
-    plt.figure(figsize=(10,10), dpi=200)
-    plt.scatter(lidar[:, 0],lidar[:, 2], s=0.1, c=np.clip(lidar[:,3], 0, 1), cmap='coolwarm')
-    plt.axis('equal')
+    plt.figure(figsize=(10, 10), dpi=200)
+    plt.scatter(
+        lidar[:, 0], lidar[:, 2], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm"
+    )
+    plt.axis("equal")
     plt.xlim(-10, 10)
     plt.ylim(0, 40)
     plt.show()
