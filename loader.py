@@ -1,10 +1,7 @@
-import os
 from os.path import join
 from typing import Dict, List, Tuple
 
-import cv2
 import numpy as np
-from tqdm import tqdm
 
 from torch.utils.data import Dataset
 
@@ -40,6 +37,14 @@ class OnceImageLidarDataset(Dataset):
         return len(self._frames)
 
     def __getitem__(self, index):
+        """Load image and point cloud.
+
+        The point cloud undergoes the following:
+        - transformed to camera
+        - all points with negative z-coords (behind camera plane) are removed
+        - coordinate system is converted to KITTI-style x-forward, y-left, z-up
+
+        """
         sequence_id, frame_id, cam_name, frame_info = self._frames[index]
         image = self._devkit.load_image(sequence_id, frame_id, cam_name)
         if self._img_transform:
@@ -60,7 +65,17 @@ class OnceImageLidarDataset(Dataset):
             ]
         )
         points_cam = np.dot(points_homo, np.linalg.inv(cam_2_lidar).T)
-        point_cam_with_reflectance = np.hstack([points_cam[:, :3], points_lidar[:, 3:]])
+        mask = points_cam[:, 2] > 0
+        points_cam = points_cam[mask]  # discard points behind camera
+        # Convert from openc camera coordinates to KITTI style (x-forward, y-left, z-up)
+        point_cam_with_reflectance = np.hstack(
+            [
+                points_cam[:, 2:3],  # z -> x
+                -points_cam[:, 0:1],  # -x -> y
+                -points_cam[:, 1:2],  # -y -> z
+                points_lidar[mask][:, 3:],  # add original reflectance
+            ]
+        )
         return point_cam_with_reflectance
 
 
@@ -77,7 +92,8 @@ def demo_dataset():
     plt.imshow(image)
     plt.show()
     plt.figure(figsize=(10, 10), dpi=200)
-    plt.scatter(lidar[:, 0], lidar[:, 2], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
+    # for visualization convert to x-right, y-forward
+    plt.scatter(-lidar[:, 1], lidar[:, 0], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
     plt.axis("equal")
     plt.xlim(-10, 10)
     plt.ylim(0, 40)
