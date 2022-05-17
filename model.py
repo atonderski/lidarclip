@@ -11,6 +11,10 @@ def build_sst(config_path):
     return model
 
 
+def build_pooler():
+    return lambda x: x
+
+
 class LidarEncoder(nn.Module):
     def __init__(self, sst_config_path):
         super().__init__()
@@ -21,3 +25,15 @@ class LidarEncoder(nn.Module):
         lidar_features = self._sst.extract_feat(point_cloud, None)
         pooled_feature = self._pooler(lidar_features)
         return pooled_feature
+
+
+model = LidarEncoder("sst_encoder_only.py")
+
+import torch
+model.to("cuda")
+points = [torch.rand(100,3).cuda() for _ in range(16)]
+out = model(points)
+
+out[0].shape
+
+
