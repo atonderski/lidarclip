@@ -1,3 +1,5 @@
+import argparse
+
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 
@@ -35,13 +37,13 @@ class LidarClippin(pl.LightningModule):
         return optimizer
 
 
-def train():
+def train(data_dir):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
-    lidar_encoder = LidarEncoder()
+    lidar_encoder = LidarEncoder("lidar_clippin/sst_encoder_only.py")
     model = LidarClippin(lidar_encoder, clip_model)
 
-    dataset = OnceImageLidarDataset("/Users/s0000960/data/once")
+    dataset = OnceImageLidarDataset(data_dir)
     train_loader = DataLoader(dataset)
 
     wandb_logger = WandbLogger(project="lidar-clippin")
@@ -49,5 +51,12 @@ def train():
     trainer.fit(model=model, train_dataloaders=train_loader)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-dir", required=True)
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    train()
+    args = parse_args()
+    train(args.data_dir)
