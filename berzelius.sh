@@ -8,10 +8,10 @@
 
 singularity exec --nv --bind /proj/nlp4adas/users/$USER:/workspace \
   --bind /proj/nlp4adas/datasets/once:/my_data \
-  --pwd /workspace/2022-d3tr/ \
-  --env PYTHONPATH=/workspace/2022-d3tr/ \
-  /proj/berzelius-2021-92/pytorch21_09.sif \
-  python3 -u $@
+  --pwd /workspace/lidar-clippin/ \
+  --env PYTHONPATH=/workspace/lidar-clippin/ \
+  /proj/nlp4adas/containers/lidar-clippin.sif \
+  python3 -u train.py --data-dir=/my_data
 
 #
 #EOF
