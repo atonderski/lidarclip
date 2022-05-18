@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 import clip
 from clip.model import CLIP
 
-from loader import OnceImageLidarDataset
-from model import LidarEncoder
+from lidar_clippin.loader import OnceImageLidarDataset
+from lidar_clippin.model import LidarEncoder
 
 
 class LidarClippin(pl.LightningModule):

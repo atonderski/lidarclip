@@ -30,10 +30,10 @@ class LidarEncoder(nn.Module):
 model = LidarEncoder("sst_encoder_only.py")
 
 import torch
+
+
 model.to("cuda")
-points = [torch.rand(100,3).cuda() for _ in range(16)]
+points = [torch.rand(100, 3).cuda() for _ in range(16)]
 out = model(points)
 
 out[0].shape
-
-
