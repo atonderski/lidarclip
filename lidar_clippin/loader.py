@@ -1,6 +1,7 @@
 from os.path import join
 from typing import Dict, List, Tuple
 
+import cv2
 import numpy as np
 
 from torch.utils.data import Dataset
@@ -52,7 +53,7 @@ class OnceImageLidarDataset(Dataset):
         point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
         calib = frame_info["calib"][cam_name]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
-        # TODO: maybe crop cloud
+        point_cloud = self._remove_points_outside_cam(point_cloud, image, calib)
         return image, point_cloud
 
     def _transform_lidar_to_cam(self, points_lidar, calibration):
@@ -78,6 +79,35 @@ class OnceImageLidarDataset(Dataset):
         )
         return point_cam_with_reflectance
 
+    def _remove_points_outside_cam(self, points_cam, image, cam_calib):
+        h, w = image.shape[:2]
+        new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
+            cam_calib["cam_intrinsic"],
+            cam_calib["distortion"],
+            (w, h),
+            alpha=1.0,
+            newImgSize=(w, h),
+        )
+        cam_intri = np.hstack([new_cam_intrinsic, np.zeros((3, 1), dtype=np.float32)])
+        points_cam_img_coors = points_cam[:, [1, 2, 0]]
+        points_cam_img_coors[:, 0] = -points_cam_img_coors[:, 0]
+        points_cam_img_coors[:, 1] = -points_cam_img_coors[:, 1]
+
+        points_cam_img_coors = np.hstack(
+            [
+                points_cam_img_coors,
+                np.ones(points_cam_img_coors.shape[0], dtype=np.float32).reshape((-1, 1)),
+            ]
+        )
+
+        points_img = np.dot(points_cam_img_coors, cam_intri.T)
+        points_img = points_img / points_img[:, [2]]
+        w_ok = np.bitwise_and(0 < points_img[:, 0], points_img[:, 0] < w)
+        h_ok = np.bitwise_and(0 < points_img[:, 1], points_img[:, 1] < h)
+        mask = np.bitwise_and(w_ok, h_ok)
+
+        return points_cam[mask]
+
 
 def build_loader(clip_preprocess):
     raise NotImplementedError
@@ -89,8 +119,8 @@ def demo_dataset():
     datadir = "/Users/s0000960/data/once"
     dataset = OnceImageLidarDataset(datadir)
     image, lidar = dataset[0]
+    plt.figure()
     plt.imshow(image)
-    plt.show()
     plt.figure(figsize=(10, 10), dpi=200)
     # for visualization convert to x-right, y-forward
     plt.scatter(-lidar[:, 1], lidar[:, 0], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
