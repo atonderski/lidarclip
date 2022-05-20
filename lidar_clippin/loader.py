@@ -78,16 +78,15 @@ class OnceImageLidarDataset(Dataset):
         mask = points_cam[:, 2] > 0
         points_cam = points_cam[mask]  # discard points behind camera
         # Convert from openc camera coordinates to KITTI style (x-forward, y-left, z-up)
-        # point_cam_with_reflectance = np.hstack(
-        #     [
-        #         points_cam[:, 2:3],  # z -> x
-        #         -points_cam[:, 0:1],  # -x -> y
-        #         -points_cam[:, 1:2],  # -y -> z
-        #         points_lidar[mask][:, 3:],  # add original reflectance
-        #     ]
-        # )
-        # return point_cam_with_reflectance
-        return points_cam
+        point_cam_with_reflectance = np.hstack(
+            [
+                points_cam[:, 2:3],  # z -> x
+                -points_cam[:, 0:1],  # -x -> y
+                -points_cam[:, 1:2],  # -y -> z
+                points_lidar[mask][:, 3:],  # add original reflectance
+            ]
+        )
+        return point_cam_with_reflectance
 
     @staticmethod
     def _remove_points_outside_cam(points_cam, image, cam_calib):
@@ -138,6 +137,7 @@ def demo_dataset():
     import matplotlib.pyplot as plt
     from einops import rearrange
 
+    datadir = "/home/s0001396/Documents/phd/datasets/once"
     datadir = "/Users/s0000960/data/once"
     loader = build_loader(datadir, ToTensor(), num_workers=0, batch_size=2)
     images, lidars = next(iter(loader))
