@@ -54,12 +54,14 @@ class OnceImageLidarDataset(Dataset):
 
         image = self._devkit.load_image(sequence_id, frame_id, cam_name)
         image = to_pil_image(image)
+        og_size = image.size
         image = self._img_transform(image)
+        new_size = image.shape[1:]
 
         point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
         calib = frame_info["calib"][cam_name]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
-        point_cloud = self._remove_points_outside_cam(point_cloud, image, calib)
+        point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib)
         point_cloud = torch.tensor(point_cloud, dtype=torch.float32)
 
         return image, point_cloud
@@ -89,14 +91,15 @@ class OnceImageLidarDataset(Dataset):
         return point_cam_with_reflectance
 
     @staticmethod
-    def _remove_points_outside_cam(points_cam, image, cam_calib):
-        _, h, w = image.shape
+    def _remove_points_outside_cam(points_cam, og_size, new_size, cam_calib):
+        w_og, h_og = og_size
+        w_new, h_new = new_size
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             cam_calib["cam_intrinsic"],
             cam_calib["distortion"],
-            (w, h),
+            (w_og, h_og),
             alpha=1.0,
-            newImgSize=(w, h),
+            newImgSize=(w_new, h_new),
         )
         cam_intri = np.hstack([new_cam_intrinsic, np.zeros((3, 1), dtype=np.float32)])
         points_cam_img_coors = points_cam[:, [1, 2, 0]]
@@ -112,8 +115,8 @@ class OnceImageLidarDataset(Dataset):
 
         points_img = np.dot(points_cam_img_coors, cam_intri.T)
         points_img = points_img / points_img[:, [2]]
-        w_ok = np.bitwise_and(0 < points_img[:, 0], points_img[:, 0] < w)
-        h_ok = np.bitwise_and(0 < points_img[:, 1], points_img[:, 1] < h)
+        w_ok = np.bitwise_and(0 < points_img[:, 0], points_img[:, 0] < w_new)
+        h_ok = np.bitwise_and(0 < points_img[:, 1], points_img[:, 1] < h_new)
         mask = np.bitwise_and(w_ok, h_ok)
 
         return points_cam[mask]
