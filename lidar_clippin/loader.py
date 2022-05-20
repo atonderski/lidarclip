@@ -5,7 +5,8 @@ import cv2
 import numpy as np
 
 import torch
-from torch.utils.data import DataLoader, Dataset, default_collate
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.dataloader import default_collate
 from torchvision.transforms import ToTensor
 from torchvision.transforms.functional import to_pil_image
 
@@ -77,15 +78,16 @@ class OnceImageLidarDataset(Dataset):
         mask = points_cam[:, 2] > 0
         points_cam = points_cam[mask]  # discard points behind camera
         # Convert from openc camera coordinates to KITTI style (x-forward, y-left, z-up)
-        point_cam_with_reflectance = np.hstack(
-            [
-                points_cam[:, 2:3],  # z -> x
-                -points_cam[:, 0:1],  # -x -> y
-                -points_cam[:, 1:2],  # -y -> z
-                points_lidar[mask][:, 3:],  # add original reflectance
-            ]
-        )
-        return point_cam_with_reflectance
+        # point_cam_with_reflectance = np.hstack(
+        #     [
+        #         points_cam[:, 2:3],  # z -> x
+        #         -points_cam[:, 0:1],  # -x -> y
+        #         -points_cam[:, 1:2],  # -y -> z
+        #         points_lidar[mask][:, 3:],  # add original reflectance
+        #     ]
+        # )
+        # return point_cam_with_reflectance
+        return points_cam
 
     @staticmethod
     def _remove_points_outside_cam(points_cam, image, cam_calib):
