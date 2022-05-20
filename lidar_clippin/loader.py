@@ -27,8 +27,10 @@ class OnceImageLidarDataset(Dataset):
     def _setup(self) -> List[Tuple[str, str, str, Dict]]:
         mega_sequence_dict = {
             **self._devkit.val_info,
-            # **self._devkit.train_info,
-            # ...
+            **self._devkit.train_info,
+            **self._devkit.raw_small_info,
+            **self._devkit.raw_medium_info,
+            # **self._devkit.raw_large_info,
         }
         frames = []
         for sequence_id, seq_info in mega_sequence_dict.items():
