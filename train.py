@@ -5,12 +5,11 @@ from pytorch_lightning.loggers import WandbLogger
 
 import torch
 from torch.nn import functional as F
-from torch.utils.data import DataLoader
 
 import clip
 from clip.model import CLIP
 
-from lidar_clippin.loader import OnceImageLidarDataset, build_loader
+from lidar_clippin.loader import build_loader
 from lidar_clippin.model import LidarEncoder
 
 
@@ -46,7 +45,7 @@ def train(data_dir, name):
     train_loader = build_loader(data_dir, clip_preprocess)
 
     available_gpus = torch.cuda.device_count() or None
-    wandb_logger = WandbLogger(project="lidar-clippin", name=name)
+    wandb_logger = WandbLogger(project="lidar-clippin", entity="agp", name=name)
     trainer = pl.Trainer(
         limit_train_batches=100, max_epochs=1, logger=wandb_logger, gpus=available_gpus
     )
