@@ -19,11 +19,12 @@ class LidarEncoder(nn.Module):
     def __init__(self, sst_config_path):
         super().__init__()
         self._sst = build_sst(sst_config_path)
-        self._pooler = clip.model.AttentionPool2d(
+        """self._pooler = clip.model.AttentionPool2d(
             spacial_dim=sst_model_conf["backbone"]["output_shape"][0],
             embed_dim=sst_model_conf["backbone"]["conv_out_channel"],
             num_heads=8,
-        )
+        )"""
+        self._pooler = lambda x: x.mean(dim=(-1, -2))
 
     def forward(self, point_cloud):
         lidar_features = self._sst.extract_feat(point_cloud, None)[0]
