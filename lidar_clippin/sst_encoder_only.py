@@ -1,6 +1,6 @@
 voxel_size = (0.32, 0.32, 6)
 window_shape = (12, 12, 1)  # 12 * 0.32m
-point_cloud_range = [-74.88, -74.88, -2, 74.88, 74.88, 4]
+point_cloud_range = [0, -40.00, -2, 80.00, 40.00, 4]
 drop_info_training = {
     0: {"max_tokens": 30, "drop_range": (0, 30)},
     1: {"max_tokens": 60, "drop_range": (30, 60)},
@@ -25,7 +25,7 @@ model = dict(
     ),
     voxel_encoder=dict(
         type="DynamicVFE",
-        in_channels=3,
+        in_channels=4,
         feat_channels=[64, 128],
         with_distance=False,
         voxel_size=voxel_size,
