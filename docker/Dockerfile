@@ -8,7 +8,6 @@ ENV FORCE_CUDA="1"
 ENV TZ=Europe/Stockholm
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-
 RUN apt-get update && apt-get install -y ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -32,14 +31,16 @@ RUN pip install -r requirements/build.txt
 
 RUN pip install --no-cache-dir -e .
 
-
 # uninstall pycocotools installed by nuscenes-devkit and reinstall mmpycocotools
 RUN pip uninstall pycocotools --no-cache-dir -y
 RUN pip install mmpycocotools --no-cache-dir --force --no-deps
 
-RUN pip install wandb
-RUN pip install pipenv
-
 # Install CLIP dependecies and CLIP
 RUN pip install ftfy regex tqdm
 RUN pip install git+https://github.com/openai/CLIP.git
+
+# Install our own requirements
+RUN pip install \
+    wandb \
+    pipenv \
+    pytorch_lightning

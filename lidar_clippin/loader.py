@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 
+import torch
 from torch.utils.data import Dataset
 
 from once_devkit.once import ONCE
@@ -13,7 +14,7 @@ CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 
 
 class OnceImageLidarDataset(Dataset):
-    def __init__(self, data_root: str, img_transform=None):
+    def __init__(self, data_root: str, img_transform):
         super().__init__()
         self._data_root = join(data_root, "data")
         self._devkit = ONCE(data_root)
@@ -47,16 +48,21 @@ class OnceImageLidarDataset(Dataset):
 
         """
         sequence_id, frame_id, cam_name, frame_info = self._frames[index]
+
         image = self._devkit.load_image(sequence_id, frame_id, cam_name)
         if self._img_transform:
             image = self._img_transform(image)
+
         point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
         calib = frame_info["calib"][cam_name]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
         point_cloud = self._remove_points_outside_cam(point_cloud, image, calib)
+        point_cloud = torch.tensor(point_cloud, dtype=torch.float32)
+
         return image, point_cloud
 
-    def _transform_lidar_to_cam(self, points_lidar, calibration):
+    @staticmethod
+    def _transform_lidar_to_cam(points_lidar, calibration):
         cam_2_lidar = calibration["cam_to_velo"]
         point_xyz = points_lidar[:, :3]
         points_homo = np.hstack(
@@ -79,7 +85,8 @@ class OnceImageLidarDataset(Dataset):
         )
         return point_cam_with_reflectance
 
-    def _remove_points_outside_cam(self, points_cam, image, cam_calib):
+    @staticmethod
+    def _remove_points_outside_cam(points_cam, image, cam_calib):
         h, w = image.shape[:2]
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             cam_calib["cam_intrinsic"],

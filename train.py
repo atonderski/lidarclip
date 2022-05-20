@@ -43,7 +43,7 @@ def train(data_dir):
     lidar_encoder = LidarEncoder("lidar_clippin/sst_encoder_only.py")
     model = LidarClippin(lidar_encoder, clip_model)
 
-    dataset = OnceImageLidarDataset(data_dir)
+    dataset = OnceImageLidarDataset(data_dir, clip_preprocess)
     train_loader = DataLoader(dataset)
 
     wandb_logger = WandbLogger(project="lidar-clippin")
