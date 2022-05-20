@@ -26,7 +26,7 @@ class LidarEncoder(nn.Module):
         )
 
     def forward(self, point_cloud):
-        lidar_features = self._sst.extract_feat(point_cloud, None)
+        lidar_features = self._sst.extract_feat(point_cloud, None)[0]
         pooled_feature = self._pooler(lidar_features)
         return pooled_feature
 
