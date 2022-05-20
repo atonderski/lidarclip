@@ -5,7 +5,8 @@ import cv2
 import numpy as np
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset, default_collate
+from torchvision.transforms import ToTensor
 from torchvision.transforms.functional import to_pil_image
 
 from once_devkit.once import ONCE
@@ -88,7 +89,7 @@ class OnceImageLidarDataset(Dataset):
 
     @staticmethod
     def _remove_points_outside_cam(points_cam, image, cam_calib):
-        h, w = image.shape[:2]
+        _, h, w = image.shape
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             cam_calib["cam_intrinsic"],
             cam_calib["distortion"],
@@ -117,16 +118,30 @@ class OnceImageLidarDataset(Dataset):
         return points_cam[mask]
 
 
-def build_loader(clip_preprocess):
-    raise NotImplementedError
+def _collate_fn(batch):
+    batched_img = default_collate([elem[0] for elem in batch])
+    batched_pc = [elem[1] for elem in batch]
+    return batched_img, batched_pc
+
+
+def build_loader(datadir, clip_preprocess, batch_size=32, num_workers=16):
+    dataset = OnceImageLidarDataset(datadir, img_transform=clip_preprocess)
+    loader = DataLoader(
+        dataset, num_workers=num_workers, batch_size=batch_size, collate_fn=_collate_fn
+    )
+    return loader
 
 
 def demo_dataset():
     import matplotlib.pyplot as plt
+    from einops import rearrange
 
     datadir = "/Users/s0000960/data/once"
-    dataset = OnceImageLidarDataset(datadir)
-    image, lidar = dataset[0]
+    loader = build_loader(datadir, ToTensor(), num_workers=0, batch_size=2)
+    images, lidars = next(iter(loader))
+
+    image = rearrange(images[0], "c h w -> h w c")
+    lidar = lidars[0]
     plt.figure()
     plt.imshow(image)
     plt.figure(figsize=(10, 10), dpi=200)

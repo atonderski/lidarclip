@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 import clip
 from clip.model import CLIP
 
-from lidar_clippin.loader import OnceImageLidarDataset
+from lidar_clippin.loader import OnceImageLidarDataset, build_loader
 from lidar_clippin.model import LidarEncoder
 
 
@@ -43,8 +43,7 @@ def train(data_dir, name):
     lidar_encoder = LidarEncoder("lidar_clippin/sst_encoder_only.py")
     model = LidarClippin(lidar_encoder, clip_model)
 
-    dataset = OnceImageLidarDataset(data_dir, clip_preprocess)
-    train_loader = DataLoader(dataset, num_workers=16)
+    train_loader = build_loader(data_dir, clip_preprocess)
 
     available_gpus = torch.cuda.device_count() or None
     wandb_logger = WandbLogger(project="lidar-clippin", name=name)
