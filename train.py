@@ -37,26 +37,31 @@ class LidarClippin(pl.LightningModule):
         return optimizer
 
 
-def train(data_dir):
+def train(data_dir, name):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
     lidar_encoder = LidarEncoder("lidar_clippin/sst_encoder_only.py")
     model = LidarClippin(lidar_encoder, clip_model)
 
     dataset = OnceImageLidarDataset(data_dir, clip_preprocess)
-    train_loader = DataLoader(dataset)
+    train_loader = DataLoader(dataset, num_workers=16)
 
-    wandb_logger = WandbLogger(project="lidar-clippin")
-    trainer = pl.Trainer(limit_train_batches=100, max_epochs=1, logger=wandb_logger)
+    available_gpus = torch.cuda.device_count() or None
+    wandb_logger = WandbLogger(project="lidar-clippin", name=name)
+    trainer = pl.Trainer(
+        limit_train_batches=100, max_epochs=1, logger=wandb_logger, gpus=available_gpus
+    )
     trainer.fit(model=model, train_dataloaders=train_loader)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", required=True)
+    parser.add_argument("--name", required=True)
+    assert args.name  # empty name is not allowed
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    train(args.data_dir)
+    train(args.data_dir, args.name)

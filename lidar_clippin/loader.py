@@ -6,6 +6,7 @@ import numpy as np
 
 import torch
 from torch.utils.data import Dataset
+from torchvision.transforms.functional import to_pil_image
 
 from once_devkit.once import ONCE
 
@@ -50,8 +51,8 @@ class OnceImageLidarDataset(Dataset):
         sequence_id, frame_id, cam_name, frame_info = self._frames[index]
 
         image = self._devkit.load_image(sequence_id, frame_id, cam_name)
-        if self._img_transform:
-            image = self._img_transform(image)
+        image = to_pil_image(image)
+        image = self._img_transform(image)
 
         point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
         calib = frame_info["calib"][cam_name]
