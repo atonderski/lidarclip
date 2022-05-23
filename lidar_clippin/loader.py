@@ -35,9 +35,13 @@ class OnceImageLidarDataset(Dataset):
         frames = []
         for sequence_id, seq_info in mega_sequence_dict.items():
             for frame_id, frame_info in seq_info.items():
+                # seq_info also stores a list with all frames
+                if frame_id == "frame_list":
+                    continue
                 # frame value (not used) has 'pose', 'calib', 'annos'
                 for cam_name in self._devkit.camera_names:
                     frames.append((sequence_id, frame_id, cam_name, frame_info))
+        print(f"[Dataset] Found {len(frames)} frames.")
         return frames
 
     def __len__(self):
@@ -53,8 +57,10 @@ class OnceImageLidarDataset(Dataset):
 
         """
         sequence_id, frame_id, cam_name, frame_info = self._frames[index]
-
-        image = self._devkit.load_image(sequence_id, frame_id, cam_name)
+        try:
+            image = self._devkit.load_image(sequence_id, frame_id, cam_name)
+        except:
+            return self.__getitem__(np.random.randint(0, len(self._frames)))
         image = to_pil_image(image)
         og_size = image.size
         image = self._img_transform(image)
