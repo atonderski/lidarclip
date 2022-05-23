@@ -60,14 +60,14 @@ model = dict(
         ]
         * 6,
         output_shape=[256, 256],
-        num_attached_conv=3,
+        num_attached_conv=0,
         conv_kwargs=[
             dict(kernel_size=3, dilation=1, padding=1, stride=1),
             dict(kernel_size=3, dilation=1, padding=1, stride=1),
             dict(kernel_size=3, dilation=2, padding=2, stride=1),
         ],
         conv_in_channel=128,
-        conv_out_channel=512,
+        conv_out_channel=128,
         debug=True,
     ),
     neck=None,
