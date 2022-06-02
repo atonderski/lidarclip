@@ -1,6 +1,7 @@
 import argparse
 
 import pytorch_lightning as pl
+from mmcv.runner import load_checkpoint
 from pytorch_lightning.loggers import WandbLogger
 
 import torch
@@ -32,22 +33,37 @@ class LidarClippin(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=3e-4)
-        return optimizer
+        optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=1e-5)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=1e-3,
+            total_steps=self.trainer.estimated_stepping_batches,
+            pct_start=0.1,
+        )
+        return [optimizer], [scheduler]
 
 
-def train(data_dir, name):
+def train(data_dir, name, checkpoint):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
     lidar_encoder = LidarEncoder("lidar_clippin/sst_encoder_only.py")
     model = LidarClippin(lidar_encoder, clip_model)
-
-    train_loader = build_loader(data_dir, clip_preprocess)
-
+    if len(checkpoint):
+        load_checkpoint(model, checkpoint, map_location="cpu")
     available_gpus = torch.cuda.device_count() or None
+    num_workers = available_gpus * 4 if available_gpus else 8
+    train_loader = build_loader(data_dir, clip_preprocess, batch_size=32, num_workers=num_workers)
+
     wandb_logger = WandbLogger(project="lidar-clippin", entity="agp", name=name)
+    accelerator = "gpu" if available_gpus else "cpu"
+    devices = available_gpus if available_gpus else 1
     trainer = pl.Trainer(
-        limit_train_batches=100, max_epochs=1, logger=wandb_logger, gpus=available_gpus
+        accelerator=accelerator,
+        devices=devices,
+        limit_train_batches=1.0,
+        max_epochs=5,
+        logger=wandb_logger,
+        strategy="ddp",
     )
     trainer.fit(model=model, train_dataloaders=train_loader)
 
@@ -56,6 +72,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--name", required=True)
+    parser.add_argument("--checkpoint", required=False, default="")
     args = parser.parse_args()
     assert args.name  # empty name is not allowed
     return args
@@ -63,4 +80,4 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    train(args.data_dir, args.name)
+    train(args.data_dir, args.name, args.checkpoint)
