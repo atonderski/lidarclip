@@ -14,6 +14,10 @@ from lidar_clippin.loader import build_loader
 from lidar_clippin.model import LidarEncoder
 
 
+def l2norm(t):
+    return F.normalize(t, dim=-1, p=2)
+
+
 class LidarClippin(pl.LightningModule):
     def __init__(self, lidar_encoder: LidarEncoder, clip_model: CLIP):
         super().__init__()
@@ -27,7 +31,7 @@ class LidarClippin(pl.LightningModule):
         with torch.no_grad():
             image_features = self.clip.encode_image(image)
         lidar_features = self.lidar_encoder(point_cloud)
-        loss = F.l1_loss(image_features, lidar_features)
+        loss = F.mse_loss(l2norm(image_features), l2norm(lidar_features))
         # Logging to TensorBoard by default
         self.log("train_loss", loss)
         return loss
