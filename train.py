@@ -47,7 +47,7 @@ class LidarClippin(pl.LightningModule):
 def train(data_dir, name, checkpoint):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
-    lidar_encoder = LidarEncoderSST("lidar_clippin/sst_encoder_only_config.py")
+    lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
     model = LidarClippin(lidar_encoder, clip_model)
     if len(checkpoint):
         load_checkpoint(model, checkpoint, map_location="cpu")
