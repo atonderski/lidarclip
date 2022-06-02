@@ -11,7 +11,7 @@ import clip
 from clip.model import CLIP
 
 from lidar_clippin.loader import build_loader
-from lidar_clippin.model import LidarEncoder
+from lidar_clippin.model.sst import LidarEncoder
 
 
 def l2norm(t):
@@ -25,14 +25,11 @@ class LidarClippin(pl.LightningModule):
         self.clip = clip_model
 
     def training_step(self, batch, batch_idx):
-        # training_step defines the train loop.
-        # it is independent of forward
         image, point_cloud = batch
         with torch.no_grad():
             image_features = self.clip.encode_image(image)
         lidar_features = self.lidar_encoder(point_cloud)
         loss = F.mse_loss(l2norm(image_features), l2norm(lidar_features))
-        # Logging to TensorBoard by default
         self.log("train_loss", loss)
         return loss
 
@@ -50,7 +47,7 @@ class LidarClippin(pl.LightningModule):
 def train(data_dir, name, checkpoint):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
-    lidar_encoder = LidarEncoder("lidar_clippin/sst_encoder_only.py")
+    lidar_encoder = LidarEncoder("lidar_clippin/sst_encoder_only_config.py")
     model = LidarClippin(lidar_encoder, clip_model)
     if len(checkpoint):
         load_checkpoint(model, checkpoint, map_location="cpu")
@@ -78,7 +75,7 @@ def parse_args():
     parser.add_argument("--name", required=True)
     parser.add_argument("--checkpoint", required=False, default="")
     args = parser.parse_args()
-    assert args.name  # empty name is not allowed
+    assert args.name, "Empty name is not allowed"
     return args
 
 
