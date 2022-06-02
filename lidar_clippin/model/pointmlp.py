@@ -10,7 +10,7 @@ def _max_pool(x):
 
 
 class LidarEncoderPointMLP(Model):
-    def __init__(self, points=8192, out_dim=512) -> None:
+    def __init__(self, points=8192, out_dim=512, reducers=(4, 4, 4, 2)) -> None:
         super().__init__(
             points=points,
             class_num=out_dim,
@@ -25,7 +25,7 @@ class LidarEncoderPointMLP(Model):
             pre_blocks=[1, 1, 2, 1],
             pos_blocks=[1, 1, 2, 1],
             k_neighbors=[24, 24, 24, 24],
-            reducers=[4, 4, 4, 2],
+            reducers=reducers,
         )
         # Change embedding to make use of reflectance as well
         self.embedding = ConvBNReLU1D(4, 32, bias=False, activation="relu")
@@ -46,9 +46,10 @@ class LidarEncoderPointMLP(Model):
         self.pool = _max_pool
 
     def forward(self, point_clouds):
-        x = self._resample_points(point_clouds)  # [b,n,4]
-        xyz = x[..., :3]  # [b,n,3]
-        x = x.permute(0, 2, 1)  # [b,3,n]
+        with torch.no_grad():
+            x = self._resample_points(point_clouds)  # [b,n,4]
+            xyz = x[..., :3]  # [b,n,3]
+            x = x.permute(0, 2, 1)  # [b,3,n]
         x = self.embedding(x)  # [b,d,n]
         for i in range(self.stages):
             # Give xyz[b, p, 3] and fea[b, p, d], return new_xyz[b, g, 3] and new_fea[b, g, k, d]
@@ -65,7 +66,7 @@ class LidarEncoderPointMLP(Model):
             if pc.shape[0] < self.points:
                 num_missing = self.points - pc.shape[0]
                 print(f"Adding {num_missing} points")
-                pc = pc.cat((pc, pc[torch.randint(0, pc.size[0], (num_missing,))]))
+                pc = torch.cat((pc, pc[torch.randint(0, pc.shape[0], (num_missing,))]))
                 print(pc.shape)
             else:
                 resampled.append(pc[torch.randperm(pc.shape[0])[: self.points]])

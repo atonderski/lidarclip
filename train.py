@@ -24,6 +24,8 @@ class LidarClippin(pl.LightningModule):
         super().__init__()
         self.lidar_encoder = lidar_encoder
         self.clip = clip_model
+        for param in self.clip.parameters():
+            param.requires_grad = False
 
     def training_step(self, batch, batch_idx):
         image, point_cloud = batch
@@ -45,11 +47,11 @@ class LidarClippin(pl.LightningModule):
         return [optimizer], [scheduler]
 
 
-def train(data_dir, name, checkpoint, use_pointmlp):
+def train(data_dir, name, checkpoint, use_pointmlp, batch_size):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
     if use_pointmlp:
-        lidar_encoder = LidarEncoderPointMLP()
+        lidar_encoder = LidarEncoderPointMLP(points=4096)
     else:
         lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
     model = LidarClippin(lidar_encoder, clip_model)
@@ -57,19 +59,23 @@ def train(data_dir, name, checkpoint, use_pointmlp):
     if len(checkpoint):
         load_checkpoint(model, checkpoint, map_location="cpu")
     available_gpus = torch.cuda.device_count() or None
-    num_workers = available_gpus * 4 if available_gpus else 8
-    train_loader = build_loader(data_dir, clip_preprocess, batch_size=32, num_workers=num_workers)
+    #    num_workers = available_gpus * 4 if available_gpus else 8
+    num_workers = 16
+    train_loader = build_loader(
+        data_dir, clip_preprocess, batch_size=batch_size, num_workers=num_workers
+    )
 
     wandb_logger = WandbLogger(project="lidar-clippin", entity="agp", name=name)
     accelerator = "gpu" if available_gpus else "cpu"
     devices = available_gpus if available_gpus else 1
     trainer = pl.Trainer(
+        precision=16,
         accelerator=accelerator,
         devices=devices,
-        limit_train_batches=1.0,
-        max_epochs=5,
+        # limit_train_batches=1.0,
+        max_epochs=100,
         logger=wandb_logger,
-        # strategy="ddp",
+        strategy="ddp",
     )
     trainer.fit(model=model, train_dataloaders=train_loader)
 
@@ -80,6 +86,7 @@ def parse_args():
     parser.add_argument("--name", required=True)
     parser.add_argument("--checkpoint", required=False, default="")
     parser.add_argument("--use-pointmlp", action="store_true")
+    parser.add_argument("--batch-size", type=int, default=32)
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -87,4 +94,4 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    train(args.data_dir, args.name, args.checkpoint, args.use_pointmlp)
+    train(args.data_dir, args.name, args.checkpoint, args.use_pointmlp, args.batch_size)
