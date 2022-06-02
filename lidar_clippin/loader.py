@@ -139,7 +139,11 @@ def _collate_fn(batch):
 def build_loader(datadir, clip_preprocess, batch_size=32, num_workers=16):
     dataset = OnceImageLidarDataset(datadir, img_transform=clip_preprocess)
     loader = DataLoader(
-        dataset, num_workers=num_workers, batch_size=batch_size, collate_fn=_collate_fn
+        dataset,
+        num_workers=num_workers,
+        batch_size=batch_size,
+        collate_fn=_collate_fn,
+        pin_memory=True,
     )
     return loader
 
