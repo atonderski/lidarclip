@@ -12,7 +12,7 @@ singularity exec --nv --bind /proj/nlp4adas/users/$USER:/workspace \
   --pwd /workspace/lidar-clippin/ \
   --env PYTHONPATH=/workspace/lidar-clippin/ \
   /proj/nlp4adas/containers/lidar-clippin.sif \
-  python3 -u train.py --data-dir=/my_data --name=$@
+  bash -c "pip install pytorch_lightning && pip install --upgrade numpy && python3 -u train.py --data-dir=/my_data $@"
 
 #
 #EOF
