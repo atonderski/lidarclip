@@ -3,14 +3,13 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
+from once_devkit.once import ONCE
 
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
 from torchvision.transforms import ToTensor
 from torchvision.transforms.functional import to_pil_image
-
-from once_devkit.once import ONCE
 
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
@@ -159,9 +158,10 @@ def demo_dataset():
 
     image = rearrange(images[0], "c h w -> h w c")
     lidar = lidars[0]
+    lidar = lidar[torch.randperm(lidar.shape[0])[:8192]]
     plt.figure()
     plt.imshow(image)
-    plt.figure(figsize=(10, 10), dpi=200)
+    plt.figure()
     # for visualization convert to x-right, y-forward
     plt.scatter(-lidar[:, 1], lidar[:, 0], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
     plt.axis("equal")
