@@ -11,7 +11,7 @@ import clip
 from clip.model import CLIP
 
 from lidar_clippin.loader import build_loader
-from lidar_clippin.model.sst import LidarEncoder
+from lidar_clippin.model.sst import LidarEncoderSST
 
 
 def l2norm(t):
@@ -19,7 +19,7 @@ def l2norm(t):
 
 
 class LidarClippin(pl.LightningModule):
-    def __init__(self, lidar_encoder: LidarEncoder, clip_model: CLIP):
+    def __init__(self, lidar_encoder: LidarEncoderSST, clip_model: CLIP):
         super().__init__()
         self.lidar_encoder = lidar_encoder
         self.clip = clip_model
@@ -47,7 +47,7 @@ class LidarClippin(pl.LightningModule):
 def train(data_dir, name, checkpoint):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
-    lidar_encoder = LidarEncoder("lidar_clippin/sst_encoder_only_config.py")
+    lidar_encoder = LidarEncoderSST("lidar_clippin/sst_encoder_only_config.py")
     model = LidarClippin(lidar_encoder, clip_model)
     if len(checkpoint):
         load_checkpoint(model, checkpoint, map_location="cpu")
