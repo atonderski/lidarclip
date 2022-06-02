@@ -11,6 +11,7 @@ import clip
 from clip.model import CLIP
 
 from lidar_clippin.loader import build_loader
+from lidar_clippin.model.pointmlp import LidarEncoderPointMLP
 from lidar_clippin.model.sst import LidarEncoderSST
 
 
@@ -44,11 +45,15 @@ class LidarClippin(pl.LightningModule):
         return [optimizer], [scheduler]
 
 
-def train(data_dir, name, checkpoint):
+def train(data_dir, name, checkpoint, use_pointmlp):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
-    lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
+    if use_pointmlp:
+        lidar_encoder = LidarEncoderPointMLP()
+    else:
+        lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
     model = LidarClippin(lidar_encoder, clip_model)
+
     if len(checkpoint):
         load_checkpoint(model, checkpoint, map_location="cpu")
     available_gpus = torch.cuda.device_count() or None
@@ -64,7 +69,7 @@ def train(data_dir, name, checkpoint):
         limit_train_batches=1.0,
         max_epochs=5,
         logger=wandb_logger,
-        strategy="ddp",
+        # strategy="ddp",
     )
     trainer.fit(model=model, train_dataloaders=train_loader)
 
@@ -74,6 +79,7 @@ def parse_args():
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--name", required=True)
     parser.add_argument("--checkpoint", required=False, default="")
+    parser.add_argument("--use-pointmlp", action="store_true")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -81,4 +87,4 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    train(args.data_dir, args.name, args.checkpoint)
+    train(args.data_dir, args.name, args.checkpoint, args.use_pointmlp)

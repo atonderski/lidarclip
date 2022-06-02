@@ -1,14 +1,15 @@
-from pointMLP.classification_ModelNet40.models.pointmlp import Model as PointMlpModel
-
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from pointMLP.classification_ModelNet40.models.pointmlp import ConvBNReLU1D, Model
 
 
 def _max_pool(x):
     return F.adaptive_max_pool1d(x, 1).squeeze(dim=-1)
 
 
-class LidarEncoderPointMLP(PointMlpModel):
+class LidarEncoderPointMLP(Model):
     def __init__(self, points=8192, out_dim=512) -> None:
         super().__init__(
             points=points,
@@ -26,6 +27,9 @@ class LidarEncoderPointMLP(PointMlpModel):
             k_neighbors=[24, 24, 24, 24],
             reducers=[4, 4, 4, 2],
         )
+        # Change embedding to make use of reflectance as well
+        self.embedding = ConvBNReLU1D(4, 32, bias=False, activation="relu")
+        # Change classifier to avoid downprojecting
         last_channel = self.classifier[0].in_features
         self.classifier = nn.Sequential(
             nn.Linear(last_channel, out_dim),
@@ -42,22 +46,30 @@ class LidarEncoderPointMLP(PointMlpModel):
         self.pool = _max_pool
 
     def forward(self, point_clouds):
-        x = self._subsample_points(point_clouds)
-        xyz = x.permute(0, 2, 1)
-        batch_size, _, _ = x.size()
-        x = self.embedding(x)  # B,D,N
+        x = self._resample_points(point_clouds)  # [b,n,4]
+        xyz = x[..., :3]  # [b,n,3]
+        x = x.permute(0, 2, 1)  # [b,3,n]
+        x = self.embedding(x)  # [b,d,n]
         for i in range(self.stages):
             # Give xyz[b, p, 3] and fea[b, p, d], return new_xyz[b, g, 3] and new_fea[b, g, k, d]
             xyz, x = self.local_grouper_list[i](xyz, x.permute(0, 2, 1))  # [b,g,3]  [b,g,k,d]
             x = self.pre_blocks_list[i](x)  # [b,d,g]
             x = self.pos_blocks_list[i](x)  # [b,d,g]
-
-        x = self.pool(x)
-        x = self.classifier(x)
+        x = self.pool(x)  # [b,d]
+        x = self.classifier(x)  # [b,d]
         return x
 
-    def _subsample_points(point_clouds):
-        torch.tensor([pc[torch.randperm(pc.shape[0])[:8192]] for pc in point_clouds])
+    def _resample_points(self, point_clouds):
+        resampled = []
+        for pc in point_clouds:
+            if pc.shape[0] < self.points:
+                num_missing = self.points - pc.shape[0]
+                print(f"Adding {num_missing} points")
+                pc = pc.cat((pc, pc[torch.randint(0, pc.size[0], (num_missing,))]))
+                print(pc.shape)
+            else:
+                resampled.append(pc[torch.randperm(pc.shape[0])[: self.points]])
+        return torch.stack(resampled)
 
 
 if __name__ == "__main__":
