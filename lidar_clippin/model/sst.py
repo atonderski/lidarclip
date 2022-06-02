@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from lidar_clippin.model.attention_pool import AttentionPool2d
-from lidar_clippin.sst_encoder_only_config import model as sst_model_conf
+from lidar_clippin.model.sst_encoder_only_config import model as sst_model_conf
 
 
 def build_sst(config_path):
