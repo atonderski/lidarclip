@@ -14,7 +14,7 @@ drop_info_test = {
 }
 drop_info = (drop_info_training, drop_info_test)
 shifts_list = [(0, 0), (window_shape[0] // 2, window_shape[1] // 2)]
-
+num_encoder_layers = 4
 model = dict(
     type="DynamicVoxelNet",
     voxel_layer=dict(
@@ -49,16 +49,16 @@ model = dict(
         d_model=[
             128,
         ]
-        * 6,
+        * num_encoder_layers,
         nhead=[
             8,
         ]
-        * 6,
-        num_blocks=6,
+        * num_encoder_layers,
+        num_blocks=num_encoder_layers,
         dim_feedforward=[
             256,
         ]
-        * 6,
+        * num_encoder_layers,
         output_shape=[128, 128],
         num_attached_conv=0,
         conv_kwargs=[
