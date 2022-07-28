@@ -22,11 +22,14 @@ def l2norm(t):
 
 
 class LidarClippin(pl.LightningModule):
-    def __init__(self, lidar_encoder: LidarEncoderSST, clip_model: CLIP, batch_size: int):
+    def __init__(
+        self, lidar_encoder: LidarEncoderSST, clip_model: CLIP, batch_size: int, epoch_size: int
+    ):
         super().__init__()
         self.lidar_encoder = lidar_encoder
         self.clip = clip_model
         self.batch_size = batch_size
+        self.epoch_size = epoch_size
         for param in self.clip.parameters():
             param.requires_grad = False
 
@@ -41,7 +44,11 @@ class LidarClippin(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=1e-5)
-        steps_per_epoch = (3618846 // self.batch_size) // self.trainer.accumulate_grad_batches
+        if type(self.trainer.limit_train_batches) == float:
+            epoch_size = self.epoch_size * self.trainer.limit_train_batches
+        elif type(self.trainer.limit_train_batches) == int:
+            epoch_size = self.trainer.limit_train_batches
+        steps_per_epoch = (epoch_size // self.batch_size) // self.trainer.accumulate_grad_batches
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
             max_lr=1e-3,
@@ -61,12 +68,11 @@ def train(data_dir, name, checkpoint_path, use_pointmlp, batch_size, use_graysca
         lidar_encoder = LidarEncoderPointMLP(points=4096)
     else:
         lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
-    model = LidarClippin(lidar_encoder, clip_model, batch_size)
 
     # if len(checkpoint):
     #    load_checkpoint(model, checkpoint, map_location="cpu")
     available_gpus = torch.cuda.device_count() or None
-    num_workers = 16
+    num_workers = 8 * available_gpus if available_gpus else 8
     train_loader = build_loader(
         data_dir,
         clip_preprocess,
@@ -75,10 +81,13 @@ def train(data_dir, name, checkpoint_path, use_pointmlp, batch_size, use_graysca
         use_grayscale=use_grayscale,
     )
 
+    model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader))
+
     wandb_logger = WandbLogger(project="lidar-clippin", entity="agp", name=name)
     accelerator = "gpu" if available_gpus else "cpu"
     devices = available_gpus if available_gpus else 1
     checkpoint_callback = ModelCheckpoint(save_top_k=3, monitor="train_loss")
+    checkpoint_path = checkpoint_path if len(checkpoint_path) else None
     learningrate_callback = LearningRateMonitor(logging_interval="step")
     trainer = pl.Trainer(
         precision=16,
