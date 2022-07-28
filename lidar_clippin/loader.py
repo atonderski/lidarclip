@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
-from once_devkit.once import ONCE
+from PIL import ImageOps
 
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -11,17 +11,20 @@ from torch.utils.data.dataloader import default_collate
 from torchvision.transforms import ToTensor
 from torchvision.transforms.functional import to_pil_image
 
+from once_devkit.once import ONCE
+
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 
 
 class OnceImageLidarDataset(Dataset):
-    def __init__(self, data_root: str, img_transform):
+    def __init__(self, data_root: str, img_transform, use_grayscale: bool = False):
         super().__init__()
         self._data_root = join(data_root, "data")
         self._devkit = ONCE(data_root)
         self._frames = self._setup()
         self._img_transform = img_transform
+        self._use_grayscale = use_grayscale
 
     def _setup(self) -> List[Tuple[str, str, str, Dict]]:
         mega_sequence_dict = {
@@ -61,6 +64,8 @@ class OnceImageLidarDataset(Dataset):
         except:
             return self.__getitem__(np.random.randint(0, len(self._frames)))
         image = to_pil_image(image)
+        if self._use_grayscale:
+            image = ImageOps.grayscale(image)
         og_size = image.size
         image = self._img_transform(image)
         new_size = image.shape[1:]
@@ -100,13 +105,15 @@ class OnceImageLidarDataset(Dataset):
     @staticmethod
     def _remove_points_outside_cam(points_cam, og_size, new_size, cam_calib):
         w_og, h_og = og_size
+        og_short_side = min(w_og, h_og)
         w_new, h_new = new_size
+        scaling = og_short_side / w_new
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             cam_calib["cam_intrinsic"],
             cam_calib["distortion"],
             (w_og, h_og),
-            alpha=1.0,
-            newImgSize=(w_new, h_new),
+            alpha=0.0,
+            # newImgSize=(int(w_og//scaling), int(h_og//scaling)),
         )
         cam_intri = np.hstack([new_cam_intrinsic, np.zeros((3, 1), dtype=np.float32)])
         points_cam_img_coors = points_cam[:, [1, 2, 0]]
@@ -122,8 +129,10 @@ class OnceImageLidarDataset(Dataset):
 
         points_img = np.dot(points_cam_img_coors, cam_intri.T)
         points_img = points_img / points_img[:, [2]]
-        w_ok = np.bitwise_and(0 < points_img[:, 0], points_img[:, 0] < w_new)
-        h_ok = np.bitwise_and(0 < points_img[:, 1], points_img[:, 1] < h_new)
+        left_border = w_og // 2 - h_og // 2
+        right_border = w_og // 2 + h_og // 2
+        w_ok = np.bitwise_and(left_border < points_img[:, 0], points_img[:, 0] < right_border)
+        h_ok = np.bitwise_and(0 < points_img[:, 1], points_img[:, 1] < h_og)
         mask = np.bitwise_and(w_ok, h_ok)
 
         return points_cam[mask]
@@ -135,14 +144,17 @@ def _collate_fn(batch):
     return batched_img, batched_pc
 
 
-def build_loader(datadir, clip_preprocess, batch_size=32, num_workers=16):
-    dataset = OnceImageLidarDataset(datadir, img_transform=clip_preprocess)
+def build_loader(datadir, clip_preprocess, batch_size=32, num_workers=16, use_grayscale=False):
+    dataset = OnceImageLidarDataset(
+        datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale
+    )
     loader = DataLoader(
         dataset,
         num_workers=num_workers,
         batch_size=batch_size,
         collate_fn=_collate_fn,
-        pin_memory=True,
+        pin_memory=False,
+        shuffle=True,
     )
     return loader
 
@@ -151,12 +163,19 @@ def demo_dataset():
     import matplotlib.pyplot as plt
     from einops import rearrange
 
+    import clip
+
+    _, clip_preprocess = clip.load("ViT-B/32")
+
     datadir = "/home/s0001396/Documents/phd/datasets/once"
-    datadir = "/Users/s0000960/data/once"
-    loader = build_loader(datadir, ToTensor(), num_workers=0, batch_size=2)
+    # datadir = "/Users/s0000960/data/once"
+    loader = build_loader(datadir, clip_preprocess, num_workers=0, batch_size=2)
     images, lidars = next(iter(loader))
 
-    image = rearrange(images[0], "c h w -> h w c")
+    means = torch.tensor([0.48145466, 0.4578275, 0.40821073], device="cpu")
+    stds = torch.tensor([0.26862954, 0.26130258, 0.27577711], device="cpu")
+    image = rearrange(images[0], "c h w -> h w c") * stds + means
+
     lidar = lidars[0]
     lidar = lidar[torch.randperm(lidar.shape[0])[:8192]]
     plt.figure()
