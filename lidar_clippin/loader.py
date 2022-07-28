@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
-from PIL import ImageOps
+from PIL import Image, ImageOps
 
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -34,7 +34,26 @@ class OnceImageLidarDataset(Dataset):
             **self._devkit.raw_medium_info,
             # **self._devkit.raw_large_info,
         }
+        self._cam_to_idx = {}
+        self._idx_to_cam = {}
+        for i, cam in enumerate(self._devkit.camera_names):
+            self._cam_to_idx[cam] = i
+            self._idx_to_cam[i] = cam
+
+        self._sequence_map = {}
+        for i, sequence_id in enumerate(mega_sequence_dict.keys()):
+            self._sequence_map[sequence_id] = i
+
         frames = []
+        self._cam_to_velos = np.zeros(
+            (len(mega_sequence_dict), len(self._devkit.camera_names), 4, 4)
+        )
+        self._cam_intrinsics = np.zeros(
+            (len(mega_sequence_dict), len(self._devkit.camera_names), 3, 3)
+        )
+        self._cam_distortions = np.zeros(
+            (len(mega_sequence_dict), len(self._devkit.camera_names), 5)
+        )
         for sequence_id, seq_info in mega_sequence_dict.items():
             for frame_id, frame_info in seq_info.items():
                 # seq_info also stores a list with all frames
@@ -42,9 +61,30 @@ class OnceImageLidarDataset(Dataset):
                     continue
                 # frame value (not used) has 'pose', 'calib', 'annos'
                 for cam_name in self._devkit.camera_names:
-                    frames.append((sequence_id, frame_id, cam_name, frame_info))
+                    frames.append((int(sequence_id), int(frame_id), self._cam_to_idx[cam_name]))
+
+            for cam_name in self._devkit.camera_names:
+                seq_idx = self._sequence_map[sequence_id]
+                cam_idx = self._cam_to_idx[cam_name]
+                self._cam_to_velos[seq_idx, cam_idx] = seq_info[seq_info["frame_list"][0]]["calib"][
+                    cam_name
+                ]["cam_to_velo"]
+                self._cam_intrinsics[seq_idx, cam_idx] = seq_info[seq_info["frame_list"][0]][
+                    "calib"
+                ][cam_name]["cam_intrinsic"]
+                self._cam_distortions[seq_idx, cam_idx] = seq_info[seq_info["frame_list"][0]][
+                    "calib"
+                ][cam_name]["distortion"]
+
+        self._devkit.val_info = None
+        self._devkit.train_info = None
+        self._devkit.test_info = None
+        self._devkit.raw_small_info = None
+        self._devkit.raw_medium_info = None
+        self._devkit.raw_large_info = None
+
         print(f"[Dataset] Found {len(frames)} frames.")
-        return frames
+        return np.array(frames)
 
     def __len__(self):
         return len(self._frames)
@@ -58,12 +98,23 @@ class OnceImageLidarDataset(Dataset):
         - coordinate system is converted to KITTI-style x-forward, y-left, z-up
 
         """
-        sequence_id, frame_id, cam_name, frame_info = self._frames[index]
+        sequence_id, frame_id, cam_idx = self._frames[index]
+        sequence_id = str(sequence_id).zfill(6)
+        seq_idx = self._sequence_map[sequence_id]
+        frame_info = {
+            "calib": {
+                "cam_to_velo": self._cam_to_velos[seq_idx, cam_idx],
+                "cam_intrinsic": self._cam_intrinsics[seq_idx, cam_idx],
+                "distortion": self._cam_distortions[seq_idx, cam_idx],
+            }
+        }
+        frame_id = str(frame_id)
+        cam_name = self._idx_to_cam[cam_idx]
         try:
-            image = self._devkit.load_image(sequence_id, frame_id, cam_name)
+            image = self._load_image(self._devkit.data_root, sequence_id, frame_id, cam_name)
         except:
             return self.__getitem__(np.random.randint(0, len(self._frames)))
-        image = to_pil_image(image)
+        # image = to_pil_image(image)
         if self._use_grayscale:
             image = ImageOps.grayscale(image)
         og_size = image.size
@@ -71,10 +122,10 @@ class OnceImageLidarDataset(Dataset):
         new_size = image.shape[1:]
 
         point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
-        calib = frame_info["calib"][cam_name]
+        calib = frame_info["calib"]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
         point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib)
-        point_cloud = torch.tensor(point_cloud, dtype=torch.float32)
+        point_cloud = torch.from_numpy(point_cloud)
 
         return image, point_cloud
 
@@ -101,6 +152,11 @@ class OnceImageLidarDataset(Dataset):
             ]
         )
         return point_cam_with_reflectance
+
+    @staticmethod
+    def _load_image(data_root, seq_id, frame_id, cam_name):
+        img_path = join(data_root, seq_id, cam_name, "{}.jpg".format(frame_id))
+        return Image.open(img_path)
 
     @staticmethod
     def _remove_points_outside_cam(points_cam, og_size, new_size, cam_calib):
