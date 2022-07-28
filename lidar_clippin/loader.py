@@ -125,7 +125,7 @@ class OnceImageLidarDataset(Dataset):
         calib = frame_info["calib"]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
         point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib)
-        point_cloud = torch.from_numpy(point_cloud)
+        point_cloud = torch.from_numpy(point_cloud).float()
 
         return image, point_cloud
 
