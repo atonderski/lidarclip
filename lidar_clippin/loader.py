@@ -113,6 +113,7 @@ class OnceImageLidarDataset(Dataset):
         try:
             image = self._load_image(self._devkit.data_root, sequence_id, frame_id, cam_name)
         except:
+            print(f"Failed to load image {sequence_id}/{frame_id}/{cam_name}")
             return self.__getitem__(np.random.randint(0, len(self._frames)))
         # image = to_pil_image(image)
         if self._use_grayscale:
@@ -120,8 +121,11 @@ class OnceImageLidarDataset(Dataset):
         og_size = image.size
         image = self._img_transform(image)
         new_size = image.shape[1:]
-
-        point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
+        try:
+            point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
+        except:
+            print(f"Failed to load point cloud {sequence_id}/{frame_id}/{cam_name}")
+            return self.__getitem__(np.random.randint(0, len(self._frames)))
         calib = frame_info["calib"]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
         point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib)
