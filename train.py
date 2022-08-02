@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import pytorch_lightning as pl
 from mmcv.runner import load_checkpoint
@@ -85,6 +86,7 @@ def train(
     model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader))
 
     wandb_logger = WandbLogger(project="lidar-clippin", entity="agp", name=name)
+    wandb_logger.experiment.config["slurm-id"] = os.environ.get("SLURM_JOB_ID", "unknown")
     accelerator = "gpu" if available_gpus else "cpu"
     devices = available_gpus if available_gpus else 1
     checkpoint_callback = ModelCheckpoint(save_top_k=3, monitor="train_loss")
