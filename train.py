@@ -45,10 +45,10 @@ class LidarClippin(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=1e-5)
         if type(self.trainer.limit_train_batches) == float:
-            epoch_size = self.epoch_size * self.trainer.limit_train_batches
+            epoch_size = int(self.epoch_size * self.trainer.limit_train_batches)
         elif type(self.trainer.limit_train_batches) == int:
             epoch_size = self.trainer.limit_train_batches
-        steps_per_epoch = (epoch_size // self.batch_size) // self.trainer.accumulate_grad_batches
+        steps_per_epoch = epoch_size // self.trainer.accumulate_grad_batches
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
             max_lr=1e-3,

@@ -44,3 +44,5 @@ RUN pip install \
     wandb \
     pipenv \
     pytorch_lightning
+
+RUN pip install --upgrade numpy

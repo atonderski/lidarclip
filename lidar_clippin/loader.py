@@ -1,3 +1,6 @@
+import gc
+import json
+import os
 from os.path import join
 from typing import Dict, List, Tuple
 
@@ -5,13 +8,9 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
-import torch
+from torch import from_numpy
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
-from torchvision.transforms import ToTensor
-from torchvision.transforms.functional import to_pil_image
-
-from once_devkit.once import ONCE
 
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
@@ -21,67 +20,61 @@ class OnceImageLidarDataset(Dataset):
     def __init__(self, data_root: str, img_transform, use_grayscale: bool = False):
         super().__init__()
         self._data_root = join(data_root, "data")
-        self._devkit = ONCE(data_root)
         self._frames = self._setup()
         self._img_transform = img_transform
         self._use_grayscale = use_grayscale
+        gc.collect()
 
     def _setup(self) -> List[Tuple[str, str, str, Dict]]:
-        mega_sequence_dict = {
-            **self._devkit.val_info,
-            **self._devkit.train_info,
-            **self._devkit.raw_small_info,
-            **self._devkit.raw_medium_info,
-            # **self._devkit.raw_large_info,
-        }
+        seq_list = []
+        for attr in ["train", "val", "raw_small", "raw_medium", "raw_large"]:
+            seq_list_path = os.path.join(self._data_root, "..", "ImageSets", f"{attr}.txt")
+            if not os.path.exists(seq_list_path):
+                continue
+            with open(seq_list_path, "r") as f:
+                seq_list.extend(set(map(lambda x: x.strip(), f.readlines())))
+
+        self._sequence_map = {seq: i for i, seq in enumerate(seq_list)}
+
         self._cam_to_idx = {}
         self._idx_to_cam = {}
-        for i, cam in enumerate(self._devkit.camera_names):
+        for i, cam in enumerate(CAM_NAMES):
             self._cam_to_idx[cam] = i
             self._idx_to_cam[i] = cam
 
-        self._sequence_map = {}
-        for i, sequence_id in enumerate(mega_sequence_dict.keys()):
-            self._sequence_map[sequence_id] = i
-
         frames = []
-        self._cam_to_velos = np.zeros(
-            (len(mega_sequence_dict), len(self._devkit.camera_names), 4, 4)
-        )
-        self._cam_intrinsics = np.zeros(
-            (len(mega_sequence_dict), len(self._devkit.camera_names), 3, 3)
-        )
-        self._cam_distortions = np.zeros(
-            (len(mega_sequence_dict), len(self._devkit.camera_names), 5)
-        )
-        for sequence_id, seq_info in mega_sequence_dict.items():
-            for frame_id, frame_info in seq_info.items():
-                # seq_info also stores a list with all frames
-                if frame_id == "frame_list":
-                    continue
+        self._cam_to_velos = np.zeros((len(seq_list), len(CAM_NAMES), 4, 4))
+        self._cam_intrinsics = np.zeros((len(seq_list), len(CAM_NAMES), 3, 3))
+        self._cam_distortions = np.zeros((len(seq_list), len(CAM_NAMES), 5))
+        for sequence_id in seq_list:
+            anno_file_path = os.path.join(
+                self._data_root, sequence_id, "{}.json".format(sequence_id)
+            )
+            if not os.path.isfile(anno_file_path):
+                print("no annotation file for sequence {}".format(sequence_id))
+                raise FileNotFoundError
+
+            with open(anno_file_path, "r") as f:
+                anno = json.load(f)
+
+            for frame_anno in anno["frames"]:
+                frame_id = frame_anno["frame_id"]
                 # frame value (not used) has 'pose', 'calib', 'annos'
-                for cam_name in self._devkit.camera_names:
+                for cam_name in CAM_NAMES:
                     frames.append((int(sequence_id), int(frame_id), self._cam_to_idx[cam_name]))
 
-            for cam_name in self._devkit.camera_names:
+            for cam_name in CAM_NAMES:
                 seq_idx = self._sequence_map[sequence_id]
                 cam_idx = self._cam_to_idx[cam_name]
-                self._cam_to_velos[seq_idx, cam_idx] = seq_info[seq_info["frame_list"][0]]["calib"][
-                    cam_name
-                ]["cam_to_velo"]
-                self._cam_intrinsics[seq_idx, cam_idx] = seq_info[seq_info["frame_list"][0]][
-                    "calib"
-                ][cam_name]["cam_intrinsic"]
-                self._cam_distortions[seq_idx, cam_idx] = seq_info[seq_info["frame_list"][0]][
-                    "calib"
-                ][cam_name]["distortion"]
-
-        self._devkit.val_info = None
-        self._devkit.train_info = None
-        self._devkit.test_info = None
-        self._devkit.raw_small_info = None
-        self._devkit.raw_medium_info = None
-        self._devkit.raw_large_info = None
+                self._cam_to_velos[seq_idx, cam_idx] = np.array(
+                    anno["calib"][cam_name]["cam_to_velo"]
+                )
+                self._cam_intrinsics[seq_idx, cam_idx] = np.array(
+                    anno["calib"][cam_name]["cam_intrinsic"]
+                )
+                self._cam_distortions[seq_idx, cam_idx] = np.array(
+                    anno["calib"][cam_name]["distortion"]
+                )
 
         print(f"[Dataset] Found {len(frames)} frames.")
         return np.array(frames)
@@ -111,10 +104,10 @@ class OnceImageLidarDataset(Dataset):
         frame_id = str(frame_id)
         cam_name = self._idx_to_cam[cam_idx]
         try:
-            image = self._load_image(self._devkit.data_root, sequence_id, frame_id, cam_name)
+            image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
         except:
             print(f"Failed to load image {sequence_id}/{frame_id}/{cam_name}")
-            return self.__getitem__(np.random.randint(0, len(self._frames)))
+            # return self.__getitem__(np.random.randint(0, len(self._frames)))
         # image = to_pil_image(image)
         if self._use_grayscale:
             image = ImageOps.grayscale(image)
@@ -122,14 +115,14 @@ class OnceImageLidarDataset(Dataset):
         image = self._img_transform(image)
         new_size = image.shape[1:]
         try:
-            point_cloud = self._devkit.load_point_cloud(sequence_id, frame_id)
+            point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
         except:
             print(f"Failed to load point cloud {sequence_id}/{frame_id}/{cam_name}")
-            return self.__getitem__(np.random.randint(0, len(self._frames)))
+            # return self.__getitem__(np.random.randint(0, len(self._frames)))
         calib = frame_info["calib"]
         point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
-        point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib)
-        point_cloud = torch.from_numpy(point_cloud).float()
+        point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib).copy()
+        point_cloud = from_numpy(point_cloud).float()
 
         return image, point_cloud
 
@@ -161,6 +154,12 @@ class OnceImageLidarDataset(Dataset):
     def _load_image(data_root, seq_id, frame_id, cam_name):
         img_path = join(data_root, seq_id, cam_name, "{}.jpg".format(frame_id))
         return Image.open(img_path)
+
+    @staticmethod
+    def _load_point_cloud(data_root, seq_id, frame_id):
+        bin_path = join(data_root, seq_id, "lidar_roof", "{}.bin".format(frame_id))
+        points = np.fromfile(bin_path, dtype=np.float32).reshape(-1, 4)
+        return points
 
     @staticmethod
     def _remove_points_outside_cam(points_cam, og_size, new_size, cam_calib):
@@ -222,6 +221,8 @@ def build_loader(datadir, clip_preprocess, batch_size=32, num_workers=16, use_gr
 def demo_dataset():
     import matplotlib.pyplot as plt
     from einops import rearrange
+
+    import torch
 
     import clip
 
