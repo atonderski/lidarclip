@@ -61,7 +61,9 @@ class LidarClippin(pl.LightningModule):
         return [optimizer], [scheduler]
 
 
-def train(data_dir, name, checkpoint_path, use_pointmlp, batch_size, use_grayscale=False):
+def train(
+    data_dir, name, checkpoint_path, use_pointmlp, batch_size, num_workers, use_grayscale=False
+):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
     if use_pointmlp:
@@ -72,7 +74,6 @@ def train(data_dir, name, checkpoint_path, use_pointmlp, batch_size, use_graysca
     # if len(checkpoint):
     #    load_checkpoint(model, checkpoint, map_location="cpu")
     available_gpus = torch.cuda.device_count() or None
-    num_workers = 8 * available_gpus if available_gpus else 8
     train_loader = build_loader(
         data_dir,
         clip_preprocess,
@@ -111,6 +112,7 @@ def parse_args():
     parser.add_argument("--use-pointmlp", action="store_true")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--use-grayscale", action="store_true")
+    parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -124,5 +126,6 @@ if __name__ == "__main__":
         args.checkpoint,
         args.use_pointmlp,
         args.batch_size,
+        args.workers,
         args.use_grayscale,
     )
