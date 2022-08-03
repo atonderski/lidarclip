@@ -63,7 +63,14 @@ class LidarClippin(pl.LightningModule):
 
 
 def train(
-    data_dir, name, checkpoint_path, use_pointmlp, batch_size, num_workers, use_grayscale=False
+    data_dir,
+    name,
+    checkpoint_save_dir,
+    checkpoint_path,
+    use_pointmlp,
+    batch_size,
+    num_workers,
+    use_grayscale=False,
 ):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
@@ -89,7 +96,11 @@ def train(
 
     accelerator = "gpu" if available_gpus else "cpu"
     devices = available_gpus if available_gpus else 1
-    checkpoint_callback = ModelCheckpoint(save_top_k=3, monitor="train_loss")
+    if checkpoint_save_dir:
+        checkpoint_save_dir = os.path.join(checkpoint_save_dir, str(wandb_logger.version))
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=checkpoint_save_dir, save_top_k=3, monitor="train_loss"
+    )
     checkpoint_path = checkpoint_path if len(checkpoint_path) else None
     learningrate_callback = LearningRateMonitor(logging_interval="step")
     trainer = pl.Trainer(
@@ -113,6 +124,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--name", required=True)
+    parser.add_argument("--checkpoint-save-dir", default=None)
     parser.add_argument("--checkpoint", required=False, default="")
     parser.add_argument("--use-pointmlp", action="store_true")
     parser.add_argument("--batch-size", type=int, default=32)
@@ -128,6 +140,7 @@ if __name__ == "__main__":
     train(
         args.data_dir,
         args.name,
+        args.checkpoint_save_dir,
         args.checkpoint,
         args.use_pointmlp,
         args.batch_size,

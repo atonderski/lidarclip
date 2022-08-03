@@ -7,7 +7,9 @@
 #SBATCH -A berzelius-2022-117
 #
 
-singularity exec --nv --bind /proj/nlp4adas/users/$USER:/workspace \
+singularity exec --nv \
+  --bind /proj/nlp4adas/users/$USER:/workspace \
+  --bind /proj/nlp4adas/checkpoints:/checkpoints \
   --bind /proj/nlp4adas/datasets/once:/my_data \
   --bind /proj/nlp4adas/users/$USER/lidar-clippin/SST/mmdet3d/ops/sst/sst_ops.py:/sst/mmdet3d/ops/sst/sst_ops.py \
   --bind /proj/nlp4adas/users/$USER/lidar-clippin/SST/mmdet3d/models/backbones/sst_v1.py:/sst/mmdet3d/models/backbones/sst_v1.py \
@@ -16,7 +18,7 @@ singularity exec --nv --bind /proj/nlp4adas/users/$USER:/workspace \
   --pwd /workspace/lidar-clippin/ \
   --env PYTHONPATH=/workspace/lidar-clippin/ \
   /proj/nlp4adas/containers/lidar-clippin.sif \
-  python3 -u train.py --data-dir=/my_data $@
+  python3 -u train.py --data-dir=/my_data --checkpoint-save-dir=/checkpoints $@
 
 #
 #EOF
