@@ -40,7 +40,7 @@ class LidarClippin(pl.LightningModule):
             image_features = self.clip.encode_image(image)
         lidar_features, _ = self.lidar_encoder(point_cloud)
         loss = F.mse_loss((image_features), (lidar_features))
-        self.log("train_loss", loss)
+        self.log("train_loss", loss.detach())
         return loss
 
     def configure_optimizers(self):
