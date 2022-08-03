@@ -86,7 +86,7 @@ def train(
     model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader))
 
     wandb_logger = WandbLogger(project="lidar-clippin", entity="agp", name=name)
-    wandb_logger.experiment.config["slurm-id"] = os.environ.get("SLURM_JOB_ID", "unknown")
+
     accelerator = "gpu" if available_gpus else "cpu"
     devices = available_gpus if available_gpus else 1
     checkpoint_callback = ModelCheckpoint(save_top_k=3, monitor="train_loss")
@@ -103,6 +103,9 @@ def train(
         callbacks=[checkpoint_callback, learningrate_callback],
         resume_from_checkpoint=checkpoint_path,
     )
+    if trainer.global_rank == 0:
+        wandb_logger.experiment.config["slurm-id"] = os.environ.get("SLURM_JOB_ID", "unknown")
+
     trainer.fit(model=model, train_dataloaders=train_loader)
 
 
