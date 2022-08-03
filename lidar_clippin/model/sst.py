@@ -17,7 +17,7 @@ def build_sst(config_path):
 
 
 class LidarEncoderSST(nn.Module):
-    def __init__(self, sst_config_path):
+    def __init__(self, sst_config_path, return_attention=False):
         super().__init__()
         self._sst = build_sst(sst_config_path)
         self._pooler = AttentionPool2d(
@@ -25,6 +25,7 @@ class LidarEncoderSST(nn.Module):
             embed_dim=512,
             num_heads=8,
             input_dim=sst_model_conf["backbone"]["conv_out_channel"],
+            return_attention=return_attention,
         )
         # self._pooler = _mean_reduce
         # self._pooler = nn.AdaptiveAvgPool1d(1)

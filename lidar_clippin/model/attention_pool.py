@@ -11,6 +11,7 @@ class AttentionPool2d(nn.Module):
         num_heads: int,
         input_dim: int,
         output_dim: int = None,
+        return_attention: bool = False,
     ):
         super().__init__()
         self.positional_embedding = nn.Parameter(
@@ -22,6 +23,7 @@ class AttentionPool2d(nn.Module):
         self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
         self.in_proj = nn.Linear(input_dim, embed_dim)
         self.num_heads = num_heads
+        self._return_attention = return_attention
 
     def forward(self, x):
         x = x.reshape(x.shape[0], x.shape[1], x.shape[2] * x.shape[3]).permute(
@@ -51,7 +53,7 @@ class AttentionPool2d(nn.Module):
             out_proj_bias=self.c_proj.bias,
             use_separate_proj_weight=True,
             training=self.training,
-            need_weights=False,
+            need_weights=self._return_attention,
         )
 
         return x[0], weights
