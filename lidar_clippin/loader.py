@@ -14,20 +14,29 @@ from torch.utils.data.dataloader import default_collate
 
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
+SPLITS = {
+    "train": ("train", "raw_small", "raw_medium", "raw_large"),
+    "val": ("val",),
+    "test": ("test"),
+}
 
 
 class OnceImageLidarDataset(Dataset):
-    def __init__(self, data_root: str, img_transform, use_grayscale: bool = False):
+    def __init__(
+        self, data_root: str, img_transform, use_grayscale: bool = False, split: str = "train"
+    ):
         super().__init__()
         self._data_root = join(data_root, "data")
-        self._frames = self._setup()
+        self._frames = self._setup(split)
         self._img_transform = img_transform
         self._use_grayscale = use_grayscale
         gc.collect()
 
-    def _setup(self) -> List[Tuple[str, str, str, Dict]]:
+    def _setup(self, split: str) -> List[Tuple[str, str, str, Dict]]:
+        assert split in SPLITS, f"Unknown split: {split}, must be one of {SPLITS.keys()}"
+
         seq_list = []
-        for attr in ["train", "val", "raw_small", "raw_medium", "raw_large"]:
+        for attr in SPLITS[split]:
             seq_list_path = os.path.join(self._data_root, "..", "ImageSets", f"{attr}.txt")
             if not os.path.exists(seq_list_path):
                 continue
@@ -203,9 +212,11 @@ def _collate_fn(batch):
     return batched_img, batched_pc
 
 
-def build_loader(datadir, clip_preprocess, batch_size=32, num_workers=16, use_grayscale=False):
+def build_loader(
+    datadir, clip_preprocess, batch_size=32, num_workers=16, use_grayscale=False, split="train"
+):
     dataset = OnceImageLidarDataset(
-        datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale
+        datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
     )
     loader = DataLoader(
         dataset,
