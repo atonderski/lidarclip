@@ -38,7 +38,7 @@ class LidarClippin(pl.LightningModule):
         image, point_cloud = batch
         with torch.no_grad():
             image_features = self.clip.encode_image(image)
-        lidar_features = self.lidar_encoder(point_cloud)
+        lidar_features, _ = self.lidar_encoder(point_cloud)
         loss = F.mse_loss((image_features), (lidar_features))
         self.log("train_loss", loss)
         return loss

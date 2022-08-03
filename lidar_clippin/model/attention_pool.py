@@ -31,7 +31,7 @@ class AttentionPool2d(nn.Module):
         x = self.in_proj(x)
         x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (HW+1)NC
         x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (HW+1)NC
-        x, _ = F.multi_head_attention_forward(
+        x, weights = F.multi_head_attention_forward(
             query=x[0:1],
             key=x[1:],
             value=x[1:],
@@ -54,4 +54,4 @@ class AttentionPool2d(nn.Module):
             need_weights=False,
         )
 
-        return x[0]
+        return x[0], weights

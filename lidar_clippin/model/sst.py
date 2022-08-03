@@ -32,13 +32,13 @@ class LidarEncoderSST(nn.Module):
 
     def forward(self, point_cloud):
         lidar_features = self._sst.extract_feat(point_cloud, None)[0]  # bs, d, h, w
-        pooled_feature = self._pooler(lidar_features)
+        pooled_feature, attn_weights = self._pooler(lidar_features)
         # pooled_feature = lidar_features.mean(dim=(-1, -2))
         # lidar_features = lidar_features.flatten(2) #bs, d, h*w
         # pooled_feature = self._pooler(lidar_features) #bs, d, 1
         # pooled_feature = pooled_feature.flatten(1) #bs, d
         # pooled_feature = self._linear(pooled_feature)
-        return pooled_feature
+        return pooled_feature, attn_weights
 
 
 if __name__ == "__main__":

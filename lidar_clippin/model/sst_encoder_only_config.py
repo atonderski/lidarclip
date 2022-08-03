@@ -1,16 +1,19 @@
-voxel_size = (0.32, 0.32, 6)
-window_shape = (12, 12, 1)  # 12 * 0.32m
-point_cloud_range = [0, -20.48, -2, 40.96, 20.48, 4]
+voxel_size = (0.5, 0.5, 6)
+window_shape = (12, 12, 1)  # 12 * 0.5m
+point_cloud_range = [0, -20.00, -2, 40.00, 20.00, 4]
 drop_info_training = {
     0: {"max_tokens": 30, "drop_range": (0, 30)},
     1: {"max_tokens": 60, "drop_range": (30, 60)},
-    2: {"max_tokens": 100, "drop_range": (60, 100000)},
+    2: {"max_tokens": 100, "drop_range": (60, 100)},
+    3: {"max_tokens": 200, "drop_range": (100, 200)},
+    4: {"max_tokens": 250, "drop_range": (200, 100000)},
 }
 drop_info_test = {
     0: {"max_tokens": 30, "drop_range": (0, 30)},
     1: {"max_tokens": 60, "drop_range": (30, 60)},
     2: {"max_tokens": 100, "drop_range": (60, 100)},
-    3: {"max_tokens": 144, "drop_range": (100, 100000)},
+    3: {"max_tokens": 200, "drop_range": (100, 200)},
+    4: {"max_tokens": 256, "drop_range": (200, 100000)},  # 16*16=256
 }
 drop_info = (drop_info_training, drop_info_test)
 shifts_list = [(0, 0), (window_shape[0] // 2, window_shape[1] // 2)]
@@ -37,7 +40,7 @@ model = dict(
     middle_encoder=dict(
         type="SSTInputLayerV2",
         window_shape=window_shape,
-        sparse_shape=(128, 128, 1),
+        sparse_shape=(80, 80, 1),
         shuffle_voxels=True,
         debug=True,
         drop_info=drop_info,
@@ -59,7 +62,7 @@ model = dict(
             256,
         ]
         * num_encoder_layers,
-        output_shape=[128, 128],
+        output_shape=[80, 80],
         num_attached_conv=0,
         conv_kwargs=[
             dict(kernel_size=3, dilation=1, padding=1, stride=1),
