@@ -17,7 +17,7 @@ CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 SPLITS = {
     "train": ("train", "raw_small", "raw_medium", "raw_large"),
     "val": ("val",),
-    "test": ("test"),
+    "test": ("test",),
 }
 
 
