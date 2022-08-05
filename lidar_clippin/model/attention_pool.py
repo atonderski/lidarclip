@@ -1,6 +1,8 @@
+from typing import Optional, Tuple
+
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import Tensor, nn
 
 
 class AttentionPool2d(nn.Module):
@@ -11,7 +13,6 @@ class AttentionPool2d(nn.Module):
         num_heads: int,
         input_dim: int,
         output_dim: int = None,
-        return_attention: bool = False,
     ):
         super().__init__()
         self.positional_embedding = nn.Parameter(
@@ -23,9 +24,14 @@ class AttentionPool2d(nn.Module):
         self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
         self.in_proj = nn.Linear(input_dim, embed_dim)
         self.num_heads = num_heads
-        self._return_attention = return_attention
 
-    def forward(self, x):
+    def _no_attention_no_pool(self, x: Tensor) -> Tensor:
+        x = x[1:]  # remove the "fake" averaged token (HW+1)NC -> (HW)NC
+        return self.c_proj(self.v_proj(x))  # (HW)NC
+
+    def forward(
+        self, x, no_pooling: bool = False, return_attention: bool = False
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         x = x.reshape(x.shape[0], x.shape[1], x.shape[2] * x.shape[3]).permute(
             2, 0, 1
         )  # NCHW -> (HW)NC
@@ -33,8 +39,14 @@ class AttentionPool2d(nn.Module):
         x = self.in_proj(x)
         x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (HW+1)NC
         x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (HW+1)NC
+        if no_pooling:
+            assert not return_attention, "Cannot return attention if we skip the attention pooling"
+            return self._no_attention_no_pool(x), key_padding_mask
+        else:
+            query = x[0:1]
+            attn_mask = None
         x, weights = F.multi_head_attention_forward(
-            query=x[0:1],
+            query=query,
             key=x[1:],
             value=x[1:],
             key_padding_mask=key_padding_mask,
@@ -53,7 +65,8 @@ class AttentionPool2d(nn.Module):
             out_proj_bias=self.c_proj.bias,
             use_separate_proj_weight=True,
             training=self.training,
-            need_weights=self._return_attention,
+            need_weights=return_attention,
+            attn_mask=attn_mask,
         )
 
         return x[0], weights
