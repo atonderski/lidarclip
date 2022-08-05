@@ -71,6 +71,7 @@ def train(
     batch_size,
     num_workers,
     use_grayscale=False,
+    load_only_model=False,
 ):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
@@ -79,8 +80,6 @@ def train(
     else:
         lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
 
-    # if len(checkpoint):
-    #    load_checkpoint(model, checkpoint, map_location="cpu")
     available_gpus = torch.cuda.device_count() or None
     train_loader = build_loader(
         data_dir,
@@ -91,6 +90,17 @@ def train(
     )
 
     model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader))
+    if len(checkpoint_path) and load_only_model:
+        model = LidarClippin.load_from_checkpoint(
+            checkpoint_path,
+            lidar_encoder=lidar_encoder,
+            clip_model=clip_model,
+            batch_size=batch_size,
+            epoch_size=len(train_loader),
+        )
+        checkpoint_path = None
+    elif not len(checkpoint_path):
+        checkpoint_path = None
 
     wandb_logger = WandbLogger(project="lidar-clippin", entity="agp", name=name)
 
@@ -99,9 +109,13 @@ def train(
     if checkpoint_save_dir:
         checkpoint_save_dir = os.path.join(checkpoint_save_dir, str(wandb_logger.version))
     checkpoint_callback = ModelCheckpoint(
-        dirpath=checkpoint_save_dir, save_top_k=3, monitor="train_loss"
+        dirpath=checkpoint_save_dir,
+        save_top_k=3,
+        monitor="train_loss",
+        save_last=True,
+        every_n_train_steps=250,
+        save_on_train_epoch_end=True,
     )
-    checkpoint_path = checkpoint_path if len(checkpoint_path) else None
     learningrate_callback = LearningRateMonitor(logging_interval="step")
     trainer = pl.Trainer(
         precision=16,
@@ -130,6 +144,7 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--use-grayscale", action="store_true")
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--load-only-model", action="store_true")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -146,4 +161,5 @@ if __name__ == "__main__":
         args.batch_size,
         args.workers,
         args.use_grayscale,
+        args.load_only_model,
     )
