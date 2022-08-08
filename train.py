@@ -72,6 +72,7 @@ def train(
     num_workers,
     use_grayscale=False,
     load_only_model=False,
+    resume_wandb_logging=False,
 ):
     """Train the model."""
     clip_model, clip_preprocess = clip.load("ViT-B/32")
@@ -92,6 +93,10 @@ def train(
     wandb_id = None
     wand_resume = False
     model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader))
+    if len(checkpoint_path) and resume_wandb_logging:
+        wandb_id = checkpoint_path.split("/")[-2]
+        wand_resume = "must"
+
     if len(checkpoint_path) and load_only_model:
         model = LidarClippin.load_from_checkpoint(
             checkpoint_path,
@@ -101,11 +106,7 @@ def train(
             epoch_size=len(train_loader),
         )
         checkpoint_path = None
-        wandb_id = checkpoint_path.split("/")[-2]
-        wand_resume = "must"
-    elif len(checkpoint_path):
-        wandb_id = checkpoint_path.split("/")[-2]
-        wand_resume = "must"
+
     else:
         checkpoint_path = None
 
@@ -162,6 +163,7 @@ def parse_args():
     parser.add_argument("--use-grayscale", action="store_true")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--load-only-model", action="store_true")
+    parser.add_argument("--resume-wandb-logging", action="store_true")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -179,4 +181,5 @@ if __name__ == "__main__":
         args.workers,
         args.use_grayscale,
         args.load_only_model,
+        args.resume_wandb_logging,
     )
