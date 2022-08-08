@@ -89,6 +89,8 @@ def train(
         use_grayscale=use_grayscale,
     )
 
+    wandb_id = None
+    wand_resume = False
     model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader))
     if len(checkpoint_path) and load_only_model:
         model = LidarClippin.load_from_checkpoint(
@@ -99,10 +101,22 @@ def train(
             epoch_size=len(train_loader),
         )
         checkpoint_path = None
-    elif not len(checkpoint_path):
+        wandb_id = checkpoint_path.split("/")[-2]
+        wand_resume = "must"
+    elif len(checkpoint_path):
+        wandb_id = checkpoint_path.split("/")[-2]
+        wand_resume = "must"
+    else:
         checkpoint_path = None
 
-    wandb_logger = WandbLogger(project="lidar-clippin", entity="agp", name=name)
+    wandb_logger = WandbLogger(
+        project="lidar-clippin",
+        entity="agp",
+        name=name,
+        resume=wand_resume,
+        id=wandb_id,
+        allow_val_change=True,
+    )
 
     accelerator = "gpu" if available_gpus else "cpu"
     devices = available_gpus if available_gpus else 1
@@ -129,7 +143,10 @@ def train(
         resume_from_checkpoint=checkpoint_path,
     )
     if trainer.global_rank == 0:
-        wandb_logger.experiment.config["slurm-id"] = os.environ.get("SLURM_JOB_ID", "unknown")
+        old_id = wandb_logger.experiment.config.get("slurm-id", "")
+        curr_id = os.environ.get("SLURM_JOB_ID", "unknown")
+        new_id = old_id + "-" + curr_id if len(old_id) else curr_id
+        wandb_logger.experiment.config.update({"slurm-id": new_id}, allow_val_change=True)
 
     trainer.fit(model=model, train_dataloaders=train_loader)
 
