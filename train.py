@@ -88,6 +88,7 @@ def train(
         batch_size=batch_size,
         num_workers=num_workers,
         use_grayscale=use_grayscale,
+        shuffle=True,
     )
 
     wandb_id = None

@@ -43,6 +43,7 @@ class OnceImageLidarDataset(Dataset):
             with open(seq_list_path, "r") as f:
                 seq_list.extend(set(map(lambda x: x.strip(), f.readlines())))
 
+        seq_list = sorted(seq_list)
         self._sequence_map = {seq: i for i, seq in enumerate(seq_list)}
 
         self._cam_to_idx = {}
@@ -213,7 +214,13 @@ def _collate_fn(batch):
 
 
 def build_loader(
-    datadir, clip_preprocess, batch_size=32, num_workers=16, use_grayscale=False, split="train"
+    datadir,
+    clip_preprocess,
+    batch_size=32,
+    num_workers=16,
+    use_grayscale=False,
+    split="train",
+    shuffle=False,
 ):
     dataset = OnceImageLidarDataset(
         datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
@@ -224,7 +231,7 @@ def build_loader(
         batch_size=batch_size,
         collate_fn=_collate_fn,
         pin_memory=False,
-        shuffle=True,
+        shuffle=shuffle,
     )
     return loader
 
