@@ -108,7 +108,7 @@ def train(
         )
         checkpoint_path = None
 
-    else:
+    elif len(checkpoint_path) == 0:
         checkpoint_path = None
 
     wandb_logger = WandbLogger(
