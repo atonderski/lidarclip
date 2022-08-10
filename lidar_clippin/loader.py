@@ -35,15 +35,15 @@ class OnceImageLidarDataset(Dataset):
     def _setup(self, split: str) -> List[Tuple[str, str, str, Dict]]:
         assert split in SPLITS, f"Unknown split: {split}, must be one of {SPLITS.keys()}"
 
-        seq_list = []
+        seq_list = set()
         for attr in SPLITS[split]:
             seq_list_path = os.path.join(self._data_root, "..", "ImageSets", f"{attr}.txt")
             if not os.path.exists(seq_list_path):
                 continue
             with open(seq_list_path, "r") as f:
-                seq_list.extend(set(map(lambda x: x.strip(), f.readlines())))
+                seq_list.update(set(map(lambda x: x.strip(), f.readlines())))
 
-        seq_list = sorted(seq_list)
+        seq_list = sorted(list(seq_list))
         self._sequence_map = {seq: i for i, seq in enumerate(seq_list)}
 
         self._cam_to_idx = {}
@@ -163,12 +163,18 @@ class OnceImageLidarDataset(Dataset):
     @staticmethod
     def _load_image(data_root, seq_id, frame_id, cam_name):
         img_path = join(data_root, seq_id, cam_name, "{}.jpg".format(frame_id))
-        return Image.open(img_path)
+        with open(img_path, "rb") as f:
+            img = Image.open(f)
+            img.load()
+
+        return img
 
     @staticmethod
     def _load_point_cloud(data_root, seq_id, frame_id):
         bin_path = join(data_root, seq_id, "lidar_roof", "{}.bin".format(frame_id))
-        points = np.fromfile(bin_path, dtype=np.float32).reshape(-1, 4)
+        with open(bin_path, "rb") as f:
+            points = np.fromfile(f, dtype=np.float32).reshape(-1, 4)
+
         return points
 
     @staticmethod
