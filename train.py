@@ -73,7 +73,7 @@ def train(
     clip_model="ViT-B/32",
 ):
     """Train the model."""
-    clip_model, clip_preprocess = clip.load(clip_model, jit=True)
+    clip_model, clip_preprocess = clip.load(clip_model, jit=False)
     lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
 
     available_gpus = torch.cuda.device_count() or None
