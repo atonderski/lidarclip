@@ -13,8 +13,6 @@ import clip
 from clip.model import CLIP
 
 from lidar_clippin.loader import build_loader
-
-# from lidar_clippin.model.pointmlp import LidarEncoderPointMLP
 from lidar_clippin.model.sst import LidarEncoderSST
 
 
@@ -68,19 +66,16 @@ def train(
     name,
     checkpoint_save_dir,
     checkpoint_path,
-    use_pointmlp,
     batch_size,
     num_workers,
     use_grayscale=False,
     load_only_model=False,
     resume_wandb_logging=False,
+    clip_model="ViT-B/32",
 ):
     """Train the model."""
-    clip_model, clip_preprocess = clip.load("ViT-B/32")
-    if use_pointmlp:
-        lidar_encoder = LidarEncoderPointMLP(points=4096)
-    else:
-        lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
+    clip_model, clip_preprocess = clip.load(clip_model, jit=False)
+    lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
 
     available_gpus = torch.cuda.device_count() or None
     train_loader = build_loader(
@@ -160,12 +155,12 @@ def parse_args():
     parser.add_argument("--name", required=True)
     parser.add_argument("--checkpoint-save-dir", default=None)
     parser.add_argument("--checkpoint", required=False, default="")
-    parser.add_argument("--use-pointmlp", action="store_true")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--use-grayscale", action="store_true")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--load-only-model", action="store_true")
     parser.add_argument("--resume-wandb-logging", action="store_true")
+    parser.add_argument("--clip-model", default="ViT-B/32", help="which clip model to use")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -178,10 +173,10 @@ if __name__ == "__main__":
         args.name,
         args.checkpoint_save_dir,
         args.checkpoint,
-        args.use_pointmlp,
         args.batch_size,
         args.workers,
         args.use_grayscale,
         args.load_only_model,
         args.resume_wandb_logging,
+        clip_model=args.clip_model,
     )
