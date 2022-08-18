@@ -6,7 +6,3 @@
 	path = once_devkit
 	url = git@github.com:once-for-auto-driving/once_devkit.git
 	ignore = dirty
-[submodule "pointMLP"]
-	path = pointMLP
-	url = git@github.com:ma-xu/pointMLP-pytorch.git
-	ignore = dirty
