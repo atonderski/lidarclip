@@ -45,6 +45,7 @@ class LidarClippin(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=1e-5)
+        # Epoch_size is number of batches/steps per epoch
         if type(self.trainer.limit_train_batches) == float:
             epoch_size = int(self.epoch_size * self.trainer.limit_train_batches)
         elif type(self.trainer.limit_train_batches) == int:
