@@ -71,11 +71,14 @@ def train(
     use_grayscale=False,
     load_only_model=False,
     resume_wandb_logging=False,
-    clip_model="ViT-B/32",
+    clip_model_name="ViT-B/32",
 ):
     """Train the model."""
-    clip_model, clip_preprocess = clip.load(clip_model, jit=False)
-    lidar_encoder = LidarEncoderSST("lidar_clippin/model/sst_encoder_only_config.py")
+    clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
+    clip_embed_dim = 768 if clip_model_name == "ViT-L/14" else 512
+    lidar_encoder = LidarEncoderSST(
+        "lidar_clippin/model/sst_encoder_only_config.py", clip_embed_dim
+    )
 
     available_gpus = torch.cuda.device_count() or None
     train_loader = build_loader(
@@ -178,5 +181,5 @@ if __name__ == "__main__":
         args.use_grayscale,
         args.load_only_model,
         args.resume_wandb_logging,
-        clip_model=args.clip_model,
+        clip_model_name=args.clip_model,
     )
