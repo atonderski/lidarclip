@@ -17,12 +17,12 @@ def build_sst(config_path):
 
 
 class LidarEncoderSST(nn.Module):
-    def __init__(self, sst_config_path):
+    def __init__(self, sst_config_path, clip_embedding_dim=512):
         super().__init__()
         self._sst = build_sst(sst_config_path)
         self._pooler = AttentionPool2d(
             spacial_dim=sst_model_conf["backbone"]["output_shape"][0],
-            embed_dim=512,
+            embed_dim=clip_embedding_dim,
             num_heads=8,
             input_dim=sst_model_conf["backbone"]["conv_out_channel"],
         )
