@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
+import torch
 from torch import from_numpy
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
@@ -45,6 +46,7 @@ class OnceImageLidarDataset(Dataset):
 
         seq_list = sorted(list(seq_list))
         self._sequence_map = {seq: i for i, seq in enumerate(seq_list)}
+        print(f"[Dataset] Found {len(seq_list)} sequences.")
 
         self._cam_to_idx = {}
         self._idx_to_cam = {}
@@ -53,9 +55,9 @@ class OnceImageLidarDataset(Dataset):
             self._idx_to_cam[i] = cam
 
         frames = []
-        self._cam_to_velos = np.zeros((len(seq_list), len(CAM_NAMES), 4, 4))
-        self._cam_intrinsics = np.zeros((len(seq_list), len(CAM_NAMES), 3, 3))
-        self._cam_distortions = np.zeros((len(seq_list), len(CAM_NAMES), 5))
+        self._cam_to_velos = torch.zeros((len(seq_list), len(CAM_NAMES), 4, 4))
+        self._cam_intrinsics = torch.zeros((len(seq_list), len(CAM_NAMES), 3, 3))
+        self._cam_distortions = torch.zeros((len(seq_list), len(CAM_NAMES), 5))
         for sequence_id in seq_list:
             anno_file_path = os.path.join(
                 self._data_root, sequence_id, "{}.json".format(sequence_id)
@@ -70,27 +72,28 @@ class OnceImageLidarDataset(Dataset):
             for frame_anno in anno["frames"]:
                 frame_id = frame_anno["frame_id"]
                 # frame value (not used) has 'pose', 'calib', 'annos'
-                for cam_name in CAM_NAMES:
-                    frames.append((int(sequence_id), int(frame_id), self._cam_to_idx[cam_name]))
+                # for cam_name in CAM_NAMES:
+                #    frames.append((int(sequence_id), int(frame_id), self._cam_to_idx[cam_name]))
+                frames.append((int(sequence_id), int(frame_id)))
 
             for cam_name in CAM_NAMES:
                 seq_idx = self._sequence_map[sequence_id]
                 cam_idx = self._cam_to_idx[cam_name]
-                self._cam_to_velos[seq_idx, cam_idx] = np.array(
+                self._cam_to_velos[seq_idx, cam_idx] = torch.as_tensor(
                     anno["calib"][cam_name]["cam_to_velo"]
                 )
-                self._cam_intrinsics[seq_idx, cam_idx] = np.array(
+                self._cam_intrinsics[seq_idx, cam_idx] = torch.as_tensor(
                     anno["calib"][cam_name]["cam_intrinsic"]
                 )
-                self._cam_distortions[seq_idx, cam_idx] = np.array(
+                self._cam_distortions[seq_idx, cam_idx] = torch.as_tensor(
                     anno["calib"][cam_name]["distortion"]
                 )
 
-        print(f"[Dataset] Found {len(frames)} frames.")
-        return np.array(frames)
+        print(f"[Dataset] Found {len(frames)*len(CAM_NAMES)} frames.")
+        return torch.as_tensor(frames)
 
     def __len__(self):
-        return len(self._frames)
+        return len(self._frames) * len(CAM_NAMES)
 
     def __getitem__(self, index):
         """Load image and point cloud.
@@ -101,17 +104,12 @@ class OnceImageLidarDataset(Dataset):
         - coordinate system is converted to KITTI-style x-forward, y-left, z-up
 
         """
-        sequence_id, frame_id, cam_idx = self._frames[index]
-        sequence_id = str(sequence_id).zfill(6)
+        sequence_id, frame_id = self._frames[index // len(CAM_NAMES)]
+        cam_idx = index % len(CAM_NAMES)
+        sequence_id = str(sequence_id.item()).zfill(6)
         seq_idx = self._sequence_map[sequence_id]
-        frame_info = {
-            "calib": {
-                "cam_to_velo": self._cam_to_velos[seq_idx, cam_idx],
-                "cam_intrinsic": self._cam_intrinsics[seq_idx, cam_idx],
-                "distortion": self._cam_distortions[seq_idx, cam_idx],
-            }
-        }
-        frame_id = str(frame_id)
+
+        frame_id = str(frame_id.item())
         cam_name = self._idx_to_cam[cam_idx]
         try:
             image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
@@ -126,15 +124,137 @@ class OnceImageLidarDataset(Dataset):
         new_size = image.shape[1:]
         try:
             point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
+            # some_range = 80
+            # mask = (point_cloud[:, 0] > -some_range) & (point_cloud[:, 0] < some_range) & (point_cloud[:, 1] > -some_range) & (point_cloud[:, 1] < some_range) & (point_cloud[:, 2] > -some_range) & (point_cloud[:, 2] < some_range)
+            # point_cloud = point_cloud[mask]
         except:
             print(f"Failed to load point cloud {sequence_id}/{frame_id}/{cam_name}")
-            # return self.__getitem__(np.random.randint(0, len(self._frames)))
-        calib = frame_info["calib"]
-        point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
-        point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib).copy()
-        point_cloud = from_numpy(point_cloud).float()
+
+        calib = {
+            "cam_to_velo": self._cam_to_velos[seq_idx, cam_idx],
+            "cam_intrinsic": self._cam_intrinsics[seq_idx, cam_idx],
+            "distortion": self._cam_distortions[seq_idx, cam_idx],
+        }
+
+        # point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
+        # point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib)
+        point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
+            point_cloud, calib, og_size, new_size
+        )
 
         return image, point_cloud
+
+    @staticmethod
+    def _transform_lidar_and_remove_points_outside_cam_torch(
+        points_lidar, calibration, og_size, new_size
+    ):
+
+        # project to cam coords
+        cam_2_lidar = calibration["cam_to_velo"]
+
+        points_cam = torch.hstack(
+            [
+                points_lidar[:, :3],
+                torch.ones((points_lidar.shape[0], 1), dtype=torch.float32),
+            ]
+        )
+
+        points_cam = torch.matmul(points_cam, torch.linalg.inv(cam_2_lidar).T)
+
+        # discard points behind camera
+        mask = points_cam[:, 2] > 0
+        points_cam = points_cam[mask]
+        points_lidar = points_lidar[mask]
+
+        # project to image coords
+        w_og, h_og = og_size
+        og_short_side = min(w_og, h_og)
+        w_new, h_new = new_size
+        scaling = og_short_side / w_new
+        new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
+            calibration["cam_intrinsic"].numpy(),
+            calibration["distortion"].numpy(),
+            (w_og, h_og),
+            alpha=0.0,
+        )
+
+        points_img = torch.matmul(points_cam[:, :3], torch.as_tensor(new_cam_intrinsic).T)
+        points_img = points_img / points_img[:, [2]]
+        # w_og // 2 = middle of image
+        # h_og // 2 = half new image width due to aspec ratio 16:9
+        left_border = w_og // 2 - h_og // 2
+        right_border = w_og // 2 + h_og // 2
+        mask = (
+            (left_border < points_img[:, 0])
+            & (points_img[:, 0] < right_border)
+            & (0 < points_img[:, 1])
+            & (points_img[:, 1] < h_og)
+        )
+
+        # add reflectance
+        points_cam = points_cam[mask]
+        points_cam[:, 3] = points_lidar[mask, 3]
+        # shift from cam coords to KITTI style (x-forward, y-left, z-up)
+        points_cam = points_cam[:, (2, 0, 1, 3)]
+        points_cam[:, 1] = -points_cam[:, 1]
+        points_cam[:, 2] = -points_cam[:, 2]
+        return points_cam.contiguous()
+
+    @staticmethod
+    def _transform_lidar_and_remove_points_outside_cam(
+        points_lidar, calibration, og_size, new_size
+    ):
+
+        # project to cam coords
+        cam_2_lidar = calibration["cam_to_velo"]
+
+        points_cam = np.hstack(
+            [
+                points_lidar[:, :3],
+                np.ones((points_lidar.shape[0], 1), dtype=np.float32),
+            ]
+        )
+
+        points_cam = np.matmul(points_cam, np.linalg.inv(cam_2_lidar).T)
+
+        # discard points behind camera
+        mask = points_cam[:, 2] > 0
+        points_cam = points_cam[mask]
+        points_lidar = points_lidar[mask]
+
+        # project to image coords
+        w_og, h_og = og_size
+        og_short_side = min(w_og, h_og)
+        w_new, h_new = new_size
+        scaling = og_short_side / w_new
+        new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
+            calibration["cam_intrinsic"],
+            calibration["distortion"],
+            (w_og, h_og),
+            alpha=0.0,
+        )
+
+        points_img = np.matmul(points_cam[:, :3], new_cam_intrinsic.T)
+        points_img = points_img / points_img[:, [2]]
+        # w_og // 2 = middle of image
+        # h_og // 2 = half new image width due to aspec ratio 16:9
+        left_border = w_og // 2 - h_og // 2
+        right_border = w_og // 2 + h_og // 2
+        mask = (
+            (left_border < points_img[:, 0])
+            & (points_img[:, 0] < right_border)
+            & (0 < points_img[:, 1])
+            & (points_img[:, 1] < h_og)
+        )
+
+        # add reflectance
+        points_cam = points_cam[mask]
+        points_cam[:, 3] = points_lidar[mask, 3]
+        # shift from cam coords to KITTI style (x-forward, y-left, z-up)
+        points_cam = points_cam[:, (2, 0, 1, 3)]
+        points_cam[:, 1] = -points_cam[:, 1]
+        points_cam[:, 2] = -points_cam[:, 2]
+        return np.ascontiguousarray(points_cam, dtype=np.float32)
 
     @staticmethod
     def _transform_lidar_to_cam(points_lidar, calibration):
@@ -173,7 +293,7 @@ class OnceImageLidarDataset(Dataset):
     def _load_point_cloud(data_root, seq_id, frame_id):
         bin_path = join(data_root, seq_id, "lidar_roof", "{}.bin".format(frame_id))
         with open(bin_path, "rb") as f:
-            points = np.fromfile(f, dtype=np.float32).reshape(-1, 4)
+            points = torch.as_tensor(np.fromfile(f, dtype=np.float32).reshape(-1, 4))
 
         return points
 
@@ -188,7 +308,6 @@ class OnceImageLidarDataset(Dataset):
             cam_calib["distortion"],
             (w_og, h_og),
             alpha=0.0,
-            # newImgSize=(int(w_og//scaling), int(h_og//scaling)),
         )
         cam_intri = np.hstack([new_cam_intrinsic, np.zeros((3, 1), dtype=np.float32)])
         points_cam_img_coors = points_cam[:, [1, 2, 0]]
@@ -204,6 +323,8 @@ class OnceImageLidarDataset(Dataset):
 
         points_img = np.dot(points_cam_img_coors, cam_intri.T)
         points_img = points_img / points_img[:, [2]]
+        # w_og // 2 = middle of image
+        # h_og // 2 = half new image width due to aspec ratio 16:9
         left_border = w_og // 2 - h_og // 2
         right_border = w_og // 2 + h_og // 2
         w_ok = np.bitwise_and(left_border < points_img[:, 0], points_img[:, 0] < right_border)
