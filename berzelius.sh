@@ -7,6 +7,8 @@
 #SBATCH -A berzelius-2022-117
 #
 
+export MASTER_PORT=$RANDOM
+
 singularity exec --nv \
   --bind /proj/nlp4adas/users/$USER:/workspace \
   --bind /proj/nlp4adas/checkpoints:/checkpoints \
