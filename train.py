@@ -22,7 +22,12 @@ def l2norm(t):
 
 class LidarClippin(pl.LightningModule):
     def __init__(
-        self, lidar_encoder: LidarEncoderSST, clip_model: CLIP, batch_size: int, epoch_size: int
+        self,
+        lidar_encoder: LidarEncoderSST,
+        clip_model: CLIP,
+        batch_size: int,
+        epoch_size: int,
+        loss: str = "mse",
     ):
         super().__init__()
         self.lidar_encoder = lidar_encoder
@@ -31,13 +36,21 @@ class LidarClippin(pl.LightningModule):
         self.epoch_size = epoch_size
         for param in self.clip.parameters():
             param.requires_grad = False
+        if loss == "mse":
+            self.loss = F.mse_loss
+        elif loss == "cosine":
+            self.loss = lambda x, y: -F.cosine_similarity(x, y).mean()
+        elif loss == "normalized_mse":
+            self.loss = lambda x, y: F.mse_loss(l2norm(x), l2norm(y))
+        else:
+            raise ValueError(f"Loss {loss} not supported")
 
     def training_step(self, batch, batch_idx):
         image, point_cloud = batch
         with torch.no_grad():
             image_features = self.clip.encode_image(image)
         lidar_features, _ = self.lidar_encoder(point_cloud)
-        loss = F.mse_loss((image_features), (lidar_features))
+        loss = self.loss((image_features), (lidar_features))
         self.log("train_loss", loss.detach())
         return loss
 
@@ -72,9 +85,11 @@ def train(
     load_only_model=False,
     resume_wandb_logging=False,
     clip_model_name="ViT-B/32",
+    loss_function="mse",
 ):
     """Train the model."""
     clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
+    clip_model.eval()
     clip_embed_dim = 768 if clip_model_name == "ViT-L/14" else 512
     lidar_encoder = LidarEncoderSST(
         "lidar_clippin/model/sst_encoder_only_config.py", clip_embed_dim
@@ -92,7 +107,7 @@ def train(
 
     wandb_id = None
     wand_resume = False
-    model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader))
+    model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader), loss_function)
     if len(checkpoint_path) and resume_wandb_logging:
         wandb_id = checkpoint_path.split("/")[-2]
         wand_resume = "must"
@@ -164,6 +179,7 @@ def parse_args():
     parser.add_argument("--load-only-model", action="store_true")
     parser.add_argument("--resume-wandb-logging", action="store_true")
     parser.add_argument("--clip-model", default="ViT-B/32", help="which clip model to use")
+    parser.add_argument("--loss-function", default="mse", help="which loss function to use")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -182,4 +198,5 @@ if __name__ == "__main__":
         args.load_only_model,
         args.resume_wandb_logging,
         clip_model_name=args.clip_model,
+        loss_function=args.loss_function,
     )
