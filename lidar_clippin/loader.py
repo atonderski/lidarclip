@@ -17,6 +17,7 @@ from torch.utils.data.dataloader import default_collate
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 SPLITS = {
     "train": ("train", "raw_small", "raw_medium", "raw_large"),
+    "train-only": ("train",),
     "val": ("val",),
     "test": ("test",),
 }
@@ -33,7 +34,7 @@ class OnceImageLidarDataset(Dataset):
         self._use_grayscale = use_grayscale
         gc.collect()
 
-    def _setup(self, split: str) -> List[Tuple[str, str, str, Dict]]:
+    def _setup(self, split: str) -> torch.Tensor:
         assert split in SPLITS, f"Unknown split: {split}, must be one of {SPLITS.keys()}"
 
         seq_list = set()
@@ -104,13 +105,7 @@ class OnceImageLidarDataset(Dataset):
         - coordinate system is converted to KITTI-style x-forward, y-left, z-up
 
         """
-        sequence_id, frame_id = self._frames[index // len(CAM_NAMES)]
-        cam_idx = index % len(CAM_NAMES)
-        sequence_id = str(sequence_id.item()).zfill(6)
-        seq_idx = self._sequence_map[sequence_id]
-
-        frame_id = str(frame_id.item())
-        cam_name = self._idx_to_cam[cam_idx]
+        sequence_id, frame_id, cam_idx, seq_idx, cam_name = self.map_index(index)
         try:
             image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
         except:
@@ -143,6 +138,16 @@ class OnceImageLidarDataset(Dataset):
         )
 
         return image, point_cloud
+
+    def map_index(self, index):
+        sequence_id, frame_id = self._frames[index // len(CAM_NAMES)]
+        cam_idx = index % len(CAM_NAMES)
+        sequence_id = str(sequence_id.item()).zfill(6)
+        seq_idx = self._sequence_map[sequence_id]
+
+        frame_id = str(frame_id.item())
+        cam_name = self._idx_to_cam[cam_idx]
+        return sequence_id, frame_id, cam_idx, seq_idx, cam_name
 
     @staticmethod
     def _transform_lidar_and_remove_points_outside_cam_torch(
@@ -181,7 +186,7 @@ class OnceImageLidarDataset(Dataset):
         points_img = torch.matmul(points_cam[:, :3], torch.as_tensor(new_cam_intrinsic).T)
         points_img = points_img / points_img[:, [2]]
         # w_og // 2 = middle of image
-        # h_og // 2 = half new image width due to aspec ratio 16:9
+        # h_og // 2 = half new image width due to wide aspect ratio 16:9 (that is cropped to square 9:9)
         left_border = w_og // 2 - h_og // 2
         right_border = w_og // 2 + h_og // 2
         mask = (
