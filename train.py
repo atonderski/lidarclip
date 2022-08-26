@@ -98,6 +98,9 @@ def train(
     )
 
     available_gpus = torch.cuda.device_count() or None
+    accelerator = "gpu" if available_gpus else "cpu"
+    devices = available_gpus if available_gpus else 1
+
     train_loader = build_loader(
         data_dir,
         clip_preprocess,
@@ -109,7 +112,9 @@ def train(
 
     wandb_id = None
     wand_resume = False
-    model = LidarClippin(lidar_encoder, clip_model, batch_size, len(train_loader), loss_function)
+    model = LidarClippin(
+        lidar_encoder, clip_model, batch_size * devices, len(train_loader), loss_function
+    )
     if len(checkpoint_path) and resume_wandb_logging:
         wandb_id = checkpoint_path.split("/")[-2]
         wand_resume = "must"
@@ -136,8 +141,6 @@ def train(
         allow_val_change=True,
     )
 
-    accelerator = "gpu" if available_gpus else "cpu"
-    devices = available_gpus if available_gpus else 1
     if checkpoint_save_dir:
         checkpoint_save_dir = os.path.join(checkpoint_save_dir, str(wandb_logger.version))
     checkpoint_callback = ModelCheckpoint(
@@ -153,8 +156,8 @@ def train(
         precision=16,
         accelerator=accelerator,
         devices=devices,
-        limit_train_batches=0.01,
-        max_epochs=100,
+        limit_train_batches=None,
+        max_epochs=1,
         logger=wandb_logger,
         strategy="ddp",
         callbacks=[checkpoint_callback, learningrate_callback],
