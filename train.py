@@ -37,11 +37,11 @@ class LidarClippin(pl.LightningModule):
         for param in self.clip.parameters():
             param.requires_grad = False
         if loss == "mse":
-            self.loss = F.mse_loss
+            self.loss_func = F.mse_loss
         elif loss == "cosine":
-            self.loss = lambda x, y: -F.cosine_similarity(x, y).mean()
+            self.loss_func = lambda x, y: -F.cosine_similarity(x, y).mean()
         elif loss == "normalized_mse":
-            self.loss = lambda x, y: F.mse_loss(l2norm(x), l2norm(y))
+            self.loss_func = lambda x, y: F.mse_loss(l2norm(x), l2norm(y))
         else:
             raise ValueError(f"Loss {loss} not supported")
 
@@ -50,7 +50,7 @@ class LidarClippin(pl.LightningModule):
         with torch.no_grad():
             image_features = self.clip.encode_image(image)
         lidar_features, _ = self.lidar_encoder(point_cloud)
-        loss = self.loss((image_features), (lidar_features))
+        loss = self.loss_func((image_features), (lidar_features))
         self.log("train_loss", loss.detach())
         return loss
 
@@ -125,7 +125,8 @@ def train(
             lidar_encoder=lidar_encoder,
             clip_model=clip_model,
             batch_size=batch_size,
-            epoch_size=len(train_loader),
+            epoch_size=len(train_loader) / devices,
+            loss=loss_function,
         )
         checkpoint_path = None
 
