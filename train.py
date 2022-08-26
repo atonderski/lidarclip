@@ -113,7 +113,7 @@ def train(
     wandb_id = None
     wand_resume = False
     model = LidarClippin(
-        lidar_encoder, clip_model, batch_size * devices, len(train_loader), loss_function
+        lidar_encoder, clip_model, batch_size, len(train_loader) / devices, loss_function
     )
     if len(checkpoint_path) and resume_wandb_logging:
         wandb_id = checkpoint_path.split("/")[-2]
