@@ -119,9 +119,16 @@ class OnceImageLidarDataset(Dataset):
         new_size = image.shape[1:]
         try:
             point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
-            # some_range = 80
-            # mask = (point_cloud[:, 0] > -some_range) & (point_cloud[:, 0] < some_range) & (point_cloud[:, 1] > -some_range) & (point_cloud[:, 1] < some_range) & (point_cloud[:, 2] > -some_range) & (point_cloud[:, 2] < some_range)
-            # point_cloud = point_cloud[mask]
+            some_range = 100
+            mask = (
+                (point_cloud[:, 0] > -some_range)
+                & (point_cloud[:, 0] < some_range)
+                & (point_cloud[:, 1] > -some_range)
+                & (point_cloud[:, 1] < some_range)
+                & (point_cloud[:, 2] > -some_range)
+                & (point_cloud[:, 2] < some_range)
+            )
+            point_cloud = point_cloud[mask]
         except:
             print(f"Failed to load point cloud {sequence_id}/{frame_id}/{cam_name}")
 
