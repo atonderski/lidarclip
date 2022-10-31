@@ -42,7 +42,6 @@ NUSCENES_CAM_NAMES = [
     "CAM_BACK",
 ]
 NUSCENES_LIDAR_NAME = "LIDAR_TOP"
-NUSCENES_INTENSITY_MAX = 255.0
 
 
 class NuscenesImageLidarDataset(Dataset):
@@ -146,7 +145,6 @@ class NuscenesImageLidarDataset(Dataset):
         points_cam = points_cam[:, (2, 0, 1, 3)]
         points_cam[:, 1] = -points_cam[:, 1]
         points_cam[:, 2] = -points_cam[:, 2]
-        points_cam[:, 3] /= NUSCENES_INTENSITY_MAX
         return im, points_cam.contiguous()
 
 
