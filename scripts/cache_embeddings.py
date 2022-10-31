@@ -72,7 +72,7 @@ def main(args):
     torch.save(lidar_feats, lidar_path)
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--checkpoint",
@@ -89,6 +89,7 @@ def parse_args():
     args = parser.parse_args()
     if not args.data_path:
         args.data_path = DEFAULT_DATA_PATHS[args.dataset_name]
+    return args
 
 
 if __name__ == "__main__":
