@@ -1,12 +1,17 @@
 import gc
 import json
 import os
+import os.path as osp
 from os.path import join
 from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
+from nuscenes.nuscenes import NuScenes
+from nuscenes.utils.data_classes import LidarPointCloud
+from nuscenes.utils.geometry_utils import view_points
 from PIL import Image, ImageOps
+from pyquaternion import Quaternion
 
 import torch
 from torch import from_numpy
@@ -21,6 +26,126 @@ SPLITS = {
     "val": ("val",),
     "test": ("test",),
 }
+NUSCENES_SPLITS = {
+    "train": "v1.0-trainval",
+    "train-only": "v1.0-trainval",
+    "val": "v1.0-trainval",
+    "test": "v1.0-test",
+    "mini": "v1.0-mini",
+}
+NUSCENES_CAM_NAMES = [
+    "CAM_FRONT",
+    "CAM_FRONT_LEFT",
+    "CAM_FRONT_RIGHT",
+    "CAM_BACK_LEFT",
+    "CAM_BACK_RIGHT",
+    "CAM_BACK",
+]
+NUSCENES_LIDAR_NAME = "LIDAR_TOP"
+
+
+class NuscenesImageLidarDataset(Dataset):
+    def __init__(
+        self,
+        data_root: str,
+        img_transform,
+        use_grayscale: bool = False,
+        split: str = "train",
+        min_dist: float = 1.0,
+    ) -> None:
+        super().__init__()
+        self._data_root = data_root
+        self._img_transform = img_transform
+        self._use_grayscale = use_grayscale
+        self._nusc = NuScenes(
+            version=NUSCENES_SPLITS[split], dataroot=self._data_root, verbose=True
+        )
+        self._frames = self._setup(split)
+        self.min_dist = min_dist
+        gc.collect()
+
+    def _setup(self, split: str) -> List[Tuple[str, str, str]]:
+
+        return [sample["token"] for sample in self._nusc.sample]
+
+    def __len__(self):
+        return len(self._frames) * len(NUSCENES_CAM_NAMES)
+
+    def __getitem__(self, index):
+        # Index to token, get relevant data and tokens
+        sample_token = self._frames[index // len(NUSCENES_CAM_NAMES)]
+        cam_name = NUSCENES_CAM_NAMES[index % len(NUSCENES_CAM_NAMES)]
+
+        sample_record = self._nusc.get("sample", sample_token)
+        pointsensor_token = sample_record["data"][NUSCENES_LIDAR_NAME]
+        camera_token = sample_record["data"][cam_name]
+
+        cam = self._nusc.get("sample_data", camera_token)
+        pointsensor = self._nusc.get("sample_data", pointsensor_token)
+        pcl_path = osp.join(self._nusc.dataroot, pointsensor["filename"])
+
+        # Load point cloud
+        pc = LidarPointCloud.from_file(pcl_path)
+
+        # Load image
+        im = Image.open(osp.join(self._nusc.dataroot, cam["filename"]))
+        if self._use_grayscale:
+            im = ImageOps.grayscale(im)
+
+        # Apply transforms
+        og_size = im.size
+        im = self._img_transform(im)
+        new_size = im.shape[1:]
+
+        # Points live in the point sensor frame. So they need to be transformed via global to the image plane.
+        # First step: transform the pointcloud to the ego vehicle frame for the timestamp of the sweep.
+        cs_record = self._nusc.get("calibrated_sensor", pointsensor["calibrated_sensor_token"])
+        pc.rotate(Quaternion(cs_record["rotation"]).rotation_matrix)
+        pc.translate(np.array(cs_record["translation"]))
+
+        # Second step: transform from ego to the global frame.
+        poserecord = self._nusc.get("ego_pose", pointsensor["ego_pose_token"])
+        pc.rotate(Quaternion(poserecord["rotation"]).rotation_matrix)
+        pc.translate(np.array(poserecord["translation"]))
+
+        # Third step: transform from global into the ego vehicle frame for the timestamp of the image.
+        poserecord = self._nusc.get("ego_pose", cam["ego_pose_token"])
+        pc.translate(-np.array(poserecord["translation"]))
+        pc.rotate(Quaternion(poserecord["rotation"]).rotation_matrix.T)
+
+        # Fourth step: transform from ego into the camera.
+        cs_record = self._nusc.get("calibrated_sensor", cam["calibrated_sensor_token"])
+        pc.translate(-np.array(cs_record["translation"]))
+        pc.rotate(Quaternion(cs_record["rotation"]).rotation_matrix.T)
+
+        # Fifth step: actually take a "picture" of the point cloud.
+        # Grab the depths (camera frame z axis points away from the camera).
+        depths = pc.points[2, :]
+
+        # Take the actual picture (matrix multiplication with camera-matrix + renormalization).
+        points = view_points(
+            pc.points[:3, :], np.array(cs_record["camera_intrinsic"]), normalize=True
+        )
+
+        # Remove points that are either outside or behind the camera. Leave a margin of 1 pixel for aesthetic reasons.
+        # Also make sure points are at least 1m in front of the camera to avoid seeing the lidar points on the camera
+        # casing for non-keyframes which are slightly out of sync.
+        w_og, h_og = og_size
+        left_border = w_og // 2 - h_og // 2
+        right_border = w_og // 2 + h_og // 2
+        mask = np.ones(depths.shape[0], dtype=bool)
+        mask = np.logical_and(mask, depths > self.min_dist)
+        mask = np.logical_and(mask, points[0, :] > left_border)
+        mask = np.logical_and(mask, points[0, :] < right_border)
+        mask = np.logical_and(mask, points[1, :] >= 0)
+        mask = np.logical_and(mask, points[1, :] <= h_og)
+
+        points_cam = torch.as_tensor(pc.points[:, mask].T)
+        # shift from cam coords to KITTI style (x-forward, y-left, z-up)
+        points_cam = points_cam[:, (2, 0, 1, 3)]
+        points_cam[:, 1] = -points_cam[:, 1]
+        points_cam[:, 2] = -points_cam[:, 2]
+        return im, points_cam.contiguous()
 
 
 class OnceImageLidarDataset(Dataset):
@@ -360,10 +485,19 @@ def build_loader(
     use_grayscale=False,
     split="train",
     shuffle=False,
+    dataset_name="once",
 ):
-    dataset = OnceImageLidarDataset(
-        datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
-    )
+    if dataset_name == "once":
+        dataset = OnceImageLidarDataset(
+            datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
+        )
+    elif dataset_name == "nuscenes":
+        dataset = NuscenesImageLidarDataset(
+            datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
+        )
+    else:
+        raise ValueError("Unknown dataset {}".format(dataset_name))
+
     loader = DataLoader(
         dataset,
         num_workers=num_workers,
@@ -385,26 +519,29 @@ def demo_dataset():
 
     _, clip_preprocess = clip.load("ViT-B/32")
 
-    datadir = "/home/s0001396/Documents/phd/datasets/once"
+    datadir = "/home/s0001396/Documents/phd/datasets/nuscenes"
     # datadir = "/Users/s0000960/data/once"
-    loader = build_loader(datadir, clip_preprocess, num_workers=0, batch_size=2)
-    images, lidars = next(iter(loader))
+    loader = build_loader(
+        datadir, clip_preprocess, num_workers=0, batch_size=2, split="mini", dataset_name="nuscenes"
+    )
+    iter_loader = iter(loader)
+    for images, lidars in iter_loader:
 
-    means = torch.tensor([0.48145466, 0.4578275, 0.40821073], device="cpu")
-    stds = torch.tensor([0.26862954, 0.26130258, 0.27577711], device="cpu")
-    image = rearrange(images[0], "c h w -> h w c") * stds + means
+        means = torch.tensor([0.48145466, 0.4578275, 0.40821073], device="cpu")
+        stds = torch.tensor([0.26862954, 0.26130258, 0.27577711], device="cpu")
+        image = rearrange(images[0], "c h w -> h w c") * stds + means
 
-    lidar = lidars[0]
-    lidar = lidar[torch.randperm(lidar.shape[0])[:8192]]
-    plt.figure()
-    plt.imshow(image)
-    plt.figure()
-    # for visualization convert to x-right, y-forward
-    plt.scatter(-lidar[:, 1], lidar[:, 0], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
-    plt.axis("equal")
-    plt.xlim(-10, 10)
-    plt.ylim(0, 40)
-    plt.show()
+        lidar = lidars[0]
+        lidar = lidar[torch.randperm(lidar.shape[0])[:8192]]
+        plt.figure()
+        plt.imshow(image)
+        plt.figure()
+        # for visualization convert to x-right, y-forward
+        plt.scatter(-lidar[:, 1], lidar[:, 0], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
+        plt.axis("equal")
+        plt.xlim(-10, 10)
+        plt.ylim(0, 40)
+        plt.show()
 
 
 if __name__ == "__main__":
