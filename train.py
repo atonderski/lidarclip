@@ -92,7 +92,7 @@ def train(
     """Train the model."""
     clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
     clip_model.eval()
-    clip_embed_dim = 768 if clip_model_name == "ViT-L/14" else 512
+    clip_embed_dim = clip_model.visual.output_dim
     lidar_encoder = LidarEncoderSST(
         "lidar_clippin/model/sst_encoder_only_config.py", clip_embed_dim
     )

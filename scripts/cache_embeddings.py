@@ -2,6 +2,7 @@ import argparse
 import os
 
 from mmcv.runner import load_checkpoint
+from tqdm import tqdm
 
 import torch
 
@@ -15,7 +16,7 @@ from train import LidarClippin
 
 def load_model(args):
     clip_model, clip_preprocess = clip.load(args.clip_version)
-    lidar_encoder = LidarEncoderSST(args.sst_config)
+    lidar_encoder = LidarEncoderSST(args.sst_config, clip_model.visual.output_dim)
     model = LidarClippin(lidar_encoder, clip_model, 1, 1)
     load_checkpoint(model, args.checkpoint, map_location="cpu")
     model.to("cuda")
@@ -41,7 +42,7 @@ def main(args):
     img_feats = []
     lidar_feats = []
     with torch.no_grad():
-        for batch in loader:
+        for batch in tqdm(loader):
             images, point_clouds = batch[:2]
             point_clouds = [pc.to("cuda") for pc in point_clouds]
             images = [img.to("cuda") for img in images]
@@ -66,12 +67,12 @@ def parse_args():
         default="/proj/nlp4adas/checkpoints/35vsmuyp/epoch=97-step=32842.ckpt",
     )
     parser.add_argument(
-        "--sst-config", type=str, default="../lidar_clippin/model/sst_encoder_only_config.py"
+        "--sst-config", type=str, default="lidar_clippin/model/sst_encoder_only_config.py"
     )
     parser.add_argument("--clip-version", type=str, default="ViT-B/32")
     parser.add_argument("--data-path", type=str, default="/proj/nlp4adas/datasets/once")
     parser.add_argument("--split", type=str, default="val")
-    parser.add_argument("--output-prefix", type=str, default="cached_")
+    parser.add_argument("--prefix", type=str, default="cached_")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--use-anno-loader", action="store_true")
     return parser.parse_args()
