@@ -16,7 +16,9 @@ from train import LidarClippin
 
 def load_model(args):
     clip_model, clip_preprocess = clip.load(args.clip_version)
-    lidar_encoder = LidarEncoderSST(args.sst_config, clip_model.visual.output_dim)
+    lidar_encoder = LidarEncoderSST(
+        "lidar_clippin/model/sst_encoder_only_config.py", clip_model.visual.output_dim
+    )
     model = LidarClippin(lidar_encoder, clip_model, 1, 1)
     load_checkpoint(model, args.checkpoint, map_location="cpu")
     model.to("cuda")
@@ -65,9 +67,6 @@ def parse_args():
         "--checkpoint",
         type=str,
         default="/proj/nlp4adas/checkpoints/35vsmuyp/epoch=97-step=32842.ckpt",
-    )
-    parser.add_argument(
-        "--sst-config", type=str, default="lidar_clippin/model/sst_encoder_only_config.py"
     )
     parser.add_argument("--clip-version", type=str, default="ViT-B/32")
     parser.add_argument("--data-path", type=str, default="/proj/nlp4adas/datasets/once")
