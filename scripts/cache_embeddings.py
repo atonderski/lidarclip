@@ -14,6 +14,12 @@ from lidar_clippin.model.sst import LidarEncoderSST
 from train import LidarClippin
 
 
+DEFAULT_DATA_PATHS = {
+    "once": "/proj/nlp4adas/datasets/once",
+    "nuscenes": "/proj/berzelius-2021-92/data/nuscenes",
+}
+
+
 def load_model(args):
     clip_model, clip_preprocess = clip.load(args.clip_version)
     lidar_encoder = LidarEncoderSST(
@@ -74,13 +80,15 @@ def parse_args():
         default="/proj/nlp4adas/checkpoints/35vsmuyp/epoch=97-step=32842.ckpt",
     )
     parser.add_argument("--clip-version", type=str, default="ViT-B/32")
-    parser.add_argument("--data-path", type=str, default="/proj/nlp4adas/datasets/once")
+    parser.add_argument("--data-path", type=str, default=None)
     parser.add_argument("--split", type=str, default="val")
     parser.add_argument("--prefix", type=str, default="/features/cached")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--use-anno-loader", action="store_true")
     parser.add_argument("--dataset-name", type=str, default="once", choices=["once", "nuscenes"])
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.data_path:
+        args.data_path = DEFAULT_DATA_PATHS[args.dataset_name]
 
 
 if __name__ == "__main__":
