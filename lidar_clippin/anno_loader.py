@@ -13,11 +13,19 @@ from lidar_clippin.loader import CAM_NAMES, OnceImageLidarDataset
 
 
 CENTERCROP_BOX = [450, 0, 1470, 1020]
+CLASSES = ("Car", "Truck", "Bus", "Pedestrian", "Cyclist")
+WEATHERS = ("sunny", "cloudy", "rainy")
+PERIODS = ("morning", "noon", "afternoon", "night")
 
 
 class OnceFullDataset(OnceImageLidarDataset):
     def __init__(
-        self, data_root: str, img_transform, use_grayscale: bool = False, split: str = "val"
+        self,
+        data_root: str,
+        img_transform,
+        use_grayscale: bool = False,
+        split: str = "val",
+        skip_data: bool = False,
     ):
         assert split in (
             "train-only",
@@ -30,19 +38,24 @@ class OnceFullDataset(OnceImageLidarDataset):
             split=split,
         )
         self._setup_for_annos()
+        self._skip_data = skip_data
 
     def _setup_for_annos(self):
         """Setup annotations for all frames."""
         frames = []
         annos = {}
+        meta_info = {}
         for sequence_id in self._sequence_map:
             # Load annotation file for sequence
             annos[sequence_id] = {}
+            meta_info[sequence_id] = {}
             anno_file_path = os.path.join(
                 self._data_root, sequence_id, "{}.json".format(sequence_id)
             )
             with open(anno_file_path, "r") as f:
                 seq_anno = json.load(f)
+            meta_info[sequence_id]["weather"] = seq_anno["meta_info"]["weather"]
+            meta_info[sequence_id]["period"] = seq_anno["meta_info"]["period"]
             for frame_anno in seq_anno["frames"]:
                 frame_id = frame_anno["frame_id"]
                 if "annos" in frame_anno:
@@ -52,6 +65,7 @@ class OnceFullDataset(OnceImageLidarDataset):
         # Override existing frames with frames that actually have annotations
         self._frames = torch.as_tensor(frames)
         self._annos = annos
+        self._meta_info = meta_info
 
     def __getitem__(self, index):
         """Load image, point cloud, and annotations.
@@ -63,26 +77,30 @@ class OnceFullDataset(OnceImageLidarDataset):
 
         """
         sequence_id, frame_id, cam_idx, seq_idx, cam_name = self.map_index(index)
-        image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
-        if self._use_grayscale:
-            image = ImageOps.grayscale(image)
-        og_size = image.size
-        image = self._img_transform(image)
-        new_size = image.shape[1:]
-        point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
-        calib = {
-            "cam_to_velo": self._cam_to_velos[seq_idx, cam_idx],
-            "cam_intrinsic": self._cam_intrinsics[seq_idx, cam_idx],
-            "distortion": self._cam_distortions[seq_idx, cam_idx],
-        }
-        point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
-            point_cloud, calib, og_size, new_size
-        )
+        if self._skip_data:
+            image, point_cloud = torch.zeros((3, 0, 0)), torch.zeros((0, 4))
+        else:
+            image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
+            if self._use_grayscale:
+                image = ImageOps.grayscale(image)
+            og_size = image.size
+            image = self._img_transform(image)
+            new_size = image.shape[1:]
+            point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
+            calib = {
+                "cam_to_velo": self._cam_to_velos[seq_idx, cam_idx],
+                "cam_intrinsic": self._cam_intrinsics[seq_idx, cam_idx],
+                "distortion": self._cam_distortions[seq_idx, cam_idx],
+            }
+            point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
+                point_cloud, calib, og_size, new_size
+            )
 
         annos = deepcopy(self._annos[sequence_id][frame_id])
         annos["boxes_2d"] = annos["boxes_2d"][cam_name]
         annos = self._keep_annos_in_image(annos)
-        return image, point_cloud, annos
+        meta_info = self._meta_info[sequence_id]
+        return image, point_cloud, annos, meta_info
 
     def _keep_annos_in_image(self, annos):
         # Check if any part of the bounding box is within the CENTERCROP_BOX (xyxy format)
@@ -108,7 +126,8 @@ def _collate_fn(batch):
     batched_img = default_collate([elem[0] for elem in batch])
     batched_pc = [elem[1] for elem in batch]
     batched_annos = [elem[2] for elem in batch]
-    return batched_img, batched_pc, batched_annos
+    batched_metas = [elem[3] for elem in batch]
+    return batched_img, batched_pc, batched_annos, batched_metas
 
 
 def build_loader(
@@ -119,9 +138,14 @@ def build_loader(
     use_grayscale=False,
     split="val",
     shuffle=False,
+    skip_data=False,
 ):
     dataset = OnceFullDataset(
-        datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
+        datadir,
+        img_transform=clip_preprocess,
+        use_grayscale=use_grayscale,
+        split=split,
+        skip_data=skip_data,
     )
     loader = DataLoader(
         dataset,
