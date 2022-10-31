@@ -30,12 +30,17 @@ def main(args):
     model, clip_preprocess = load_model(args)
     build_loader = build_anno_loader if args.use_anno_loader else build_dataonly_loader
     loader = build_loader(
-        args.data_path, clip_preprocess, batch_size=args.batch_size, num_workers=8, split=args.split
+        args.data_path,
+        clip_preprocess,
+        batch_size=args.batch_size,
+        num_workers=8,
+        split=args.split,
+        dataset_name=args.dataset_name,
     )
 
     img_path, lidar_path = (
-        f"{args.prefix}_{args.split}_img.pt",
-        f"{args.prefix}_{args.split}_lidar.pt",
+        f"{args.prefix}_img.pt",
+        f"{args.prefix}_lidar.pt",
     )
     if os.path.exists(img_path) or os.path.exists(lidar_path):
         print("Found existing files, skipping")
@@ -71,9 +76,10 @@ def parse_args():
     parser.add_argument("--clip-version", type=str, default="ViT-B/32")
     parser.add_argument("--data-path", type=str, default="/proj/nlp4adas/datasets/once")
     parser.add_argument("--split", type=str, default="val")
-    parser.add_argument("--prefix", type=str, default="cached_")
+    parser.add_argument("--prefix", type=str, default="/features/cached")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--use-anno-loader", action="store_true")
+    parser.add_argument("--dataset-name", type=str, default="once", choices=["once", "nuscenes"])
     return parser.parse_args()
 
 

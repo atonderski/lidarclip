@@ -12,6 +12,7 @@ export MASTER_PORT=$RANDOM
 singularity exec --nv \
   --bind /proj/nlp4adas/users/$USER:/workspace \
   --bind /proj/nlp4adas/checkpoints:/checkpoints \
+  --bind /proj/nlp4adas/features:/features \
   --bind /proj/nlp4adas/datasets/once:/my_data \
   --bind /proj/nlp4adas/users/$USER/lidar-clippin/SST/mmdet3d/ops/sst/sst_ops.py:/sst/mmdet3d/ops/sst/sst_ops.py \
   --bind /proj/nlp4adas/users/$USER/lidar-clippin/SST/mmdet3d/models/backbones/sst_v1.py:/sst/mmdet3d/models/backbones/sst_v1.py \

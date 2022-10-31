@@ -139,7 +139,10 @@ def build_loader(
     split="val",
     shuffle=False,
     skip_data=False,
+    dataset_name="once",
 ):
+    if dataset_name != "once":
+        raise NotImplementedError("Only ONCE dataset has annotation support.")
     dataset = OnceFullDataset(
         datadir,
         img_transform=clip_preprocess,
