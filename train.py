@@ -88,6 +88,9 @@ def train(
     resume_wandb_logging=False,
     clip_model_name="ViT-B/32",
     loss_function="mse",
+    nuscenes_datadir="/proj/berzelius-2021-92/data/nuscenes",
+    nuscenes_split="train",
+    dataset_name="once",
 ):
     """Train the model."""
     clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
@@ -108,6 +111,9 @@ def train(
         num_workers=num_workers,
         use_grayscale=use_grayscale,
         shuffle=True,
+        nuscenes_datadir=nuscenes_datadir,
+        nuscenes_split=nuscenes_split,
+        dataset_name=dataset_name,
     )
 
     wandb_id = None
@@ -186,6 +192,9 @@ def parse_args():
     parser.add_argument("--resume-wandb-logging", action="store_true")
     parser.add_argument("--clip-model", default="ViT-B/32", help="which clip model to use")
     parser.add_argument("--loss-function", default="mse", help="which loss function to use")
+    parser.add_argument("--nuscenes-datadir", default="/proj/berzelius-2021-92/data/nuscenes")
+    parser.add_argument("--nuscenes-split", default="train")
+    parser.add_argument("--dataset-name", default="once")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -205,4 +214,7 @@ if __name__ == "__main__":
         args.resume_wandb_logging,
         clip_model_name=args.clip_model,
         loss_function=args.loss_function,
+        nuscenes_datadir=args.nuscenes_datadir,
+        nuscenes_split=args.nuscenes_split,
+        dataset_name=args.dataset_name,
     )

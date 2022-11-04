@@ -10,6 +10,7 @@ import numpy as np
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.data_classes import LidarPointCloud
 from nuscenes.utils.geometry_utils import view_points
+from nuscenes.utils.splits import create_splits_scenes
 from PIL import Image, ImageOps
 from pyquaternion import Quaternion
 
@@ -30,6 +31,7 @@ NUSCENES_SPLITS = {
     "train": "v1.0-trainval",
     "train-only": "v1.0-trainval",
     "val": "v1.0-trainval",
+    "trainval": "v1.0-trainval",
     "test": "v1.0-test",
     "mini": "v1.0-mini",
 }
@@ -42,6 +44,7 @@ NUSCENES_CAM_NAMES = [
     "CAM_BACK",
 ]
 NUSCENES_LIDAR_NAME = "LIDAR_TOP"
+NUSCENES_INTENSITY_MAX = 255.0
 
 
 class NuscenesImageLidarDataset(Dataset):
@@ -51,7 +54,7 @@ class NuscenesImageLidarDataset(Dataset):
         img_transform,
         use_grayscale: bool = False,
         split: str = "train",
-        min_dist: float = 1.0,
+        min_dist: float = 0.5,
     ) -> None:
         super().__init__()
         self._data_root = data_root
@@ -65,8 +68,26 @@ class NuscenesImageLidarDataset(Dataset):
         gc.collect()
 
     def _setup(self, split: str) -> List[Tuple[str, str, str]]:
+        splits = create_splits_scenes()
+        if split == "train-only":
+            split = "train"
+        if split == "trainval":
+            split = "train"
+            splits["train"].extend(splits["val"])
+        elif split == "mini":
+            split = "mini_train"
+            splits["mini_train"].extend(splits["mini_val"])
 
-        return [sample["token"] for sample in self._nusc.sample]
+        ok_scenes = splits[split]
+
+        ok_scene_tokens = [
+            scene["token"] for scene in self._nusc.scene if scene["name"] in ok_scenes
+        ]
+        return [
+            sample["token"]
+            for sample in self._nusc.sample
+            if sample["scene_token"] in ok_scene_tokens
+        ]
 
     def __len__(self):
         return len(self._frames) * len(NUSCENES_CAM_NAMES)
@@ -145,6 +166,7 @@ class NuscenesImageLidarDataset(Dataset):
         points_cam = points_cam[:, (2, 0, 1, 3)]
         points_cam[:, 1] = -points_cam[:, 1]
         points_cam[:, 2] = -points_cam[:, 2]
+        points_cam[:, 3] /= NUSCENES_INTENSITY_MAX
         return im, points_cam.contiguous()
 
 
@@ -471,6 +493,33 @@ class OnceImageLidarDataset(Dataset):
         return points_cam[mask]
 
 
+class JointImageLidarDataset:
+    def __init__(
+        self,
+        once_datadir,
+        nuscenes_datadir,
+        img_transform,
+        use_grayscale,
+        once_split,
+        nuscenes_split,
+    ):
+        self.once_dataset = OnceImageLidarDataset(
+            once_datadir, img_transform, use_grayscale, once_split
+        )
+        self.nuscenes_dataset = NuscenesImageLidarDataset(
+            nuscenes_datadir, img_transform, use_grayscale, nuscenes_split
+        )
+
+    def __len__(self):
+        return len(self.once_dataset) + len(self.nuscenes_dataset)
+
+    def __getitem__(self, idx):
+        if idx < len(self.once_dataset):
+            return self.once_dataset[idx]
+        else:
+            return self.nuscenes_dataset[idx - len(self.once_dataset)]
+
+
 def _collate_fn(batch):
     batched_img = default_collate([elem[0] for elem in batch])
     batched_pc = [elem[1] for elem in batch]
@@ -486,6 +535,8 @@ def build_loader(
     split="train",
     shuffle=False,
     dataset_name="once",
+    nuscenes_datadir=None,
+    nuscenes_split="train",
 ):
     if dataset_name == "once":
         dataset = OnceImageLidarDataset(
@@ -494,6 +545,15 @@ def build_loader(
     elif dataset_name == "nuscenes":
         dataset = NuscenesImageLidarDataset(
             datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
+        )
+    elif dataset_name == "joint":
+        dataset = JointImageLidarDataset(
+            datadir,
+            nuscenes_datadir,
+            img_transform=clip_preprocess,
+            use_grayscale=use_grayscale,
+            once_split=split,
+            nuscenes_split=nuscenes_split,
         )
     else:
         raise ValueError("Unknown dataset {}".format(dataset_name))
@@ -519,10 +579,18 @@ def demo_dataset():
 
     _, clip_preprocess = clip.load("ViT-B/32")
 
-    datadir = "/home/s0001396/Documents/phd/datasets/nuscenes"
-    # datadir = "/Users/s0000960/data/once"
+    nuscenes_datadir = "/home/s0001396/Documents/phd/datasets/nuscenes"
+    datadir = "/home/s0001396/Documents/phd/datasets/once"
     loader = build_loader(
-        datadir, clip_preprocess, num_workers=0, batch_size=2, split="mini", dataset_name="nuscenes"
+        datadir,
+        clip_preprocess,
+        num_workers=0,
+        batch_size=2,
+        split="val",
+        dataset_name="joint",
+        nuscenes_datadir=nuscenes_datadir,
+        nuscenes_split="mini",
+        shuffle=True,
     )
     iter_loader = iter(loader)
     for images, lidars in iter_loader:
@@ -541,6 +609,8 @@ def demo_dataset():
         plt.axis("equal")
         plt.xlim(-10, 10)
         plt.ylim(0, 40)
+        plt.figure()
+        plt.hist(lidar[:, 3], bins=1000, density=True)
         plt.show()
 
 
