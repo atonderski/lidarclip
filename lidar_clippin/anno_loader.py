@@ -26,10 +26,15 @@ class OnceFullDataset(OnceImageLidarDataset):
         use_grayscale: bool = False,
         split: str = "val",
         skip_data: bool = False,
+        skip_anno: bool = False,
     ):
-        assert split in (
-            "train-only",
-            "val",
+        assert (
+            split
+            in (
+                "train-only",
+                "val",
+            )
+            or skip_anno
         ), "Annotations are only available for train and val splits."
         super().__init__(
             data_root=data_root,
@@ -37,8 +42,9 @@ class OnceFullDataset(OnceImageLidarDataset):
             use_grayscale=use_grayscale,
             split=split,
         )
-        self._setup_for_annos()
+        self._skip_anno = skip_anno
         self._skip_data = skip_data
+        self._setup_for_annos()
 
     def _setup_for_annos(self):
         """Setup annotations for all frames."""
@@ -58,10 +64,12 @@ class OnceFullDataset(OnceImageLidarDataset):
             meta_info[sequence_id]["period"] = seq_anno["meta_info"]["period"]
             for frame_anno in seq_anno["frames"]:
                 frame_id = frame_anno["frame_id"]
-                if "annos" in frame_anno:
+                if self._skip_anno:
+                    frames.append((int(sequence_id), int(frame_id)))
+                elif "annos" in frame_anno:
                     frames.append((int(sequence_id), int(frame_id)))
                     annos[sequence_id][frame_id] = frame_anno["annos"]
-        print(f"[Dataset] Kept {len(frames)*len(CAM_NAMES)} frames that have annotations.")
+        print(f"[Dataset] Kept {len(frames)*len(CAM_NAMES)} frames.")
         # Override existing frames with frames that actually have annotations
         self._frames = torch.as_tensor(frames)
         self._annos = annos
@@ -95,10 +103,12 @@ class OnceFullDataset(OnceImageLidarDataset):
             point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
                 point_cloud, calib, og_size, new_size
             )
-
-        annos = deepcopy(self._annos[sequence_id][frame_id])
-        annos["boxes_2d"] = annos["boxes_2d"][cam_name]
-        annos = self._keep_annos_in_image(annos)
+        if self._skip_anno:
+            annos = None
+        else:
+            annos = deepcopy(self._annos[sequence_id][frame_id])
+            annos["boxes_2d"] = annos["boxes_2d"][cam_name]
+            annos = self._keep_annos_in_image(annos)
         meta_info = self._meta_info[sequence_id]
         return image, point_cloud, annos, meta_info
 
@@ -139,6 +149,7 @@ def build_loader(
     split="val",
     shuffle=False,
     skip_data=False,
+    skip_anno=False,
     dataset_name="once",
 ):
     if dataset_name != "once":
@@ -149,6 +160,7 @@ def build_loader(
         use_grayscale=use_grayscale,
         split=split,
         skip_data=skip_data,
+        skip_anno=skip_anno,
     )
     loader = DataLoader(
         dataset,

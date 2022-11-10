@@ -11,6 +11,8 @@
 # Icon must end with two \r
 Icon
 
+# Random output images
+*.png
 
 # Thumbnails
 ._*
