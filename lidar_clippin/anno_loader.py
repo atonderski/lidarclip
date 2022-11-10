@@ -23,7 +23,6 @@ class OnceFullDataset(OnceImageLidarDataset):
         self,
         data_root: str,
         img_transform,
-        use_grayscale: bool = False,
         split: str = "val",
         skip_data: bool = False,
         skip_anno: bool = False,
@@ -39,7 +38,6 @@ class OnceFullDataset(OnceImageLidarDataset):
         super().__init__(
             data_root=data_root,
             img_transform=img_transform,
-            use_grayscale=use_grayscale,
             split=split,
         )
         self._skip_anno = skip_anno
@@ -89,8 +87,6 @@ class OnceFullDataset(OnceImageLidarDataset):
             image, point_cloud = torch.zeros((3, 0, 0)), torch.zeros((0, 4))
         else:
             image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
-            if self._use_grayscale:
-                image = ImageOps.grayscale(image)
             og_size = image.size
             image = self._img_transform(image)
             new_size = image.shape[1:]
@@ -140,24 +136,22 @@ def _collate_fn(batch):
     return batched_img, batched_pc, batched_annos, batched_metas
 
 
-def build_loader(
+def build_anno_loader(
     datadir,
     clip_preprocess,
     batch_size=32,
     num_workers=16,
-    use_grayscale=False,
     split="val",
     shuffle=False,
     skip_data=False,
     skip_anno=False,
     dataset_name="once",
 ):
-    if dataset_name != "once":
+    if dataset_name != "once" and not skip_anno:
         raise NotImplementedError("Only ONCE dataset has annotation support.")
     dataset = OnceFullDataset(
         datadir,
         img_transform=clip_preprocess,
-        use_grayscale=use_grayscale,
         split=split,
         skip_data=skip_data,
         skip_anno=skip_anno,
@@ -185,8 +179,8 @@ def demo_dataset():
 
     # datadir = "/home/s0001396/Documents/phd/datasets/once"
     datadir = "/Users/s0000960/data/once"
-    loader = build_loader(datadir, clip_preprocess, num_workers=0, batch_size=2, split="val")
-    images, lidars, annos = next(iter(loader))
+    loader = build_anno_loader(datadir, clip_preprocess, num_workers=0, batch_size=2, split="val")
+    images, lidars, annos, metas = next(iter(loader))
 
     means = torch.tensor([0.48145466, 0.4578275, 0.40821073], device="cpu")
     stds = torch.tensor([0.26862954, 0.26130258, 0.27577711], device="cpu")

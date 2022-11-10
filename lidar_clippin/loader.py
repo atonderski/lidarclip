@@ -52,14 +52,12 @@ class NuscenesImageLidarDataset(Dataset):
         self,
         data_root: str,
         img_transform,
-        use_grayscale: bool = False,
         split: str = "train",
         min_dist: float = 0.5,
     ) -> None:
         super().__init__()
         self._data_root = data_root
         self._img_transform = img_transform
-        self._use_grayscale = use_grayscale
         self._nusc = NuScenes(
             version=NUSCENES_SPLITS[split], dataroot=self._data_root, verbose=True
         )
@@ -110,8 +108,6 @@ class NuscenesImageLidarDataset(Dataset):
 
         # Load image
         im = Image.open(osp.join(self._nusc.dataroot, cam["filename"]))
-        if self._use_grayscale:
-            im = ImageOps.grayscale(im)
 
         # Apply transforms
         og_size = im.size
@@ -171,14 +167,11 @@ class NuscenesImageLidarDataset(Dataset):
 
 
 class OnceImageLidarDataset(Dataset):
-    def __init__(
-        self, data_root: str, img_transform, use_grayscale: bool = False, split: str = "train"
-    ):
+    def __init__(self, data_root: str, img_transform, split: str = "train"):
         super().__init__()
         self._data_root = join(data_root, "data")
         self._frames = self._setup(split)
         self._img_transform = img_transform
-        self._use_grayscale = use_grayscale
         gc.collect()
 
     def _setup(self, split: str) -> torch.Tensor:
@@ -259,8 +252,6 @@ class OnceImageLidarDataset(Dataset):
             print(f"Failed to load image {sequence_id}/{frame_id}/{cam_name}")
             # return self.__getitem__(np.random.randint(0, len(self._frames)))
         # image = to_pil_image(image)
-        if self._use_grayscale:
-            image = ImageOps.grayscale(image)
         og_size = image.size
         image = self._img_transform(image)
         new_size = image.shape[1:]
@@ -499,15 +490,12 @@ class JointImageLidarDataset:
         once_datadir,
         nuscenes_datadir,
         img_transform,
-        use_grayscale,
         once_split,
         nuscenes_split,
     ):
-        self.once_dataset = OnceImageLidarDataset(
-            once_datadir, img_transform, use_grayscale, once_split
-        )
+        self.once_dataset = OnceImageLidarDataset(once_datadir, img_transform, once_split)
         self.nuscenes_dataset = NuscenesImageLidarDataset(
-            nuscenes_datadir, img_transform, use_grayscale, nuscenes_split
+            nuscenes_datadir, img_transform, nuscenes_split
         )
 
     def __len__(self):
@@ -531,7 +519,6 @@ def build_loader(
     clip_preprocess,
     batch_size=32,
     num_workers=16,
-    use_grayscale=False,
     split="train",
     shuffle=False,
     dataset_name="once",
@@ -539,19 +526,14 @@ def build_loader(
     nuscenes_split="train",
 ):
     if dataset_name == "once":
-        dataset = OnceImageLidarDataset(
-            datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
-        )
+        dataset = OnceImageLidarDataset(datadir, img_transform=clip_preprocess, split=split)
     elif dataset_name == "nuscenes":
-        dataset = NuscenesImageLidarDataset(
-            datadir, img_transform=clip_preprocess, use_grayscale=use_grayscale, split=split
-        )
+        dataset = NuscenesImageLidarDataset(datadir, img_transform=clip_preprocess, split=split)
     elif dataset_name == "joint":
         dataset = JointImageLidarDataset(
             datadir,
             nuscenes_datadir,
             img_transform=clip_preprocess,
-            use_grayscale=use_grayscale,
             once_split=split,
             nuscenes_split=nuscenes_split,
         )

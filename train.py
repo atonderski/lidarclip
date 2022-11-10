@@ -83,7 +83,6 @@ def train(
     checkpoint_path,
     batch_size,
     num_workers,
-    use_grayscale=False,
     load_only_model=False,
     resume_wandb_logging=False,
     clip_model_name="ViT-B/32",
@@ -109,7 +108,6 @@ def train(
         clip_preprocess,
         batch_size=batch_size,
         num_workers=num_workers,
-        use_grayscale=use_grayscale,
         shuffle=True,
         nuscenes_datadir=nuscenes_datadir,
         nuscenes_split=nuscenes_split,
@@ -186,7 +184,6 @@ def parse_args():
     parser.add_argument("--checkpoint-save-dir", default=None)
     parser.add_argument("--checkpoint", required=False, default="")
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--use-grayscale", action="store_true")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--load-only-model", action="store_true")
     parser.add_argument("--resume-wandb-logging", action="store_true")
@@ -209,7 +206,6 @@ if __name__ == "__main__":
         args.checkpoint,
         args.batch_size,
         args.workers,
-        args.use_grayscale,
         args.load_only_model,
         args.resume_wandb_logging,
         clip_model_name=args.clip_model,
