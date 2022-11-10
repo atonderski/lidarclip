@@ -2,8 +2,9 @@ import gc
 import json
 import os
 import os.path as osp
+from copy import deepcopy
 from os.path import join
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -66,7 +67,7 @@ class NuscenesImageLidarDataset(Dataset):
         gc.collect()
 
     def _setup(self, split: str) -> List[Tuple[str, str, str]]:
-        splits = create_splits_scenes()
+        splits = deepcopy(create_splits_scenes())
         if split == "train-only":
             split = "train"
         if split == "trainval":
