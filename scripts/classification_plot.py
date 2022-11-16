@@ -1,13 +1,13 @@
+"""This is a small script to plot a zero-shot classification output nicely
+for the front page of the paper. Needs hard-coded class names and confidences."""
+
+import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 
 
 SCORES = np.array([0.0031, 0.5265, 0.0087, 0.2124, 0.0699, 0.1794])
 NAMES = np.array(["animal", "cyclist", "person", "truck", "bus", "car"])
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-
 ORDER = [0, 2, 1, 5, 4, 3]
 
 # Make a very very pretty column plot using seaborn
