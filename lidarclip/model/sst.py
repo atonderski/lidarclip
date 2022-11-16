@@ -4,8 +4,8 @@ from mmdet3d.models import build_model
 import torch
 from torch import nn
 
-from lidar_clippin.model.attention_pool import AttentionPool2d
-from lidar_clippin.model.sst_encoder_only_config import model as sst_model_conf
+from lidarclip.model.attention_pool import AttentionPool2d
+from lidarclip.model.sst_encoder_only_config import model as sst_model_conf
 
 
 def build_sst(config_path):

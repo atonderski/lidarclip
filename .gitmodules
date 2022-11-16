@@ -2,7 +2,3 @@
 	path = SST
 	url = git@github.com:TuSimple/SST.git
 	ignore = dirty
-[submodule "once_devkit"]
-	path = once_devkit
-	url = git@github.com:once-for-auto-driving/once_devkit.git
-	ignore = dirty
