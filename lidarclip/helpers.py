@@ -58,6 +58,20 @@ def get_topk_separate_prompts(
     return img_idxs.cpu().numpy(), pc_idxs.cpu().numpy(), joint_idxs.cpu().numpy()
 
 
+def filter_candidates(candidate_idxs, k, exclude_range):
+    """Filter out candidates that are too close to each other."""
+    idxs = []
+    exclude_idxs = set()
+    for idx in candidate_idxs:
+        if idx in exclude_idxs:
+            continue
+        exclude_idxs.update(range(idx - exclude_range, idx + exclude_range + 1))
+        idxs.append(idx)
+        if len(idxs) == k:
+            break
+    return np.array(idxs)
+
+
 def try_paths(*paths):
     """Try all directory paths and return the first one that works."""
     for path in paths:
