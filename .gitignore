@@ -337,3 +337,5 @@ cython_debug/
 
 # Containers
 *.sif
+
+wandb/
