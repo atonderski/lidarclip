@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 
-from lidar_clippin.loader import CAM_NAMES, OnceImageLidarDataset
+from lidarclip.loader import CAM_NAMES, OnceImageLidarDataset
 
 
 CENTERCROP_BOX = [450, 0, 1470, 1020]

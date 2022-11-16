@@ -11,8 +11,8 @@ from torch.nn import functional as F
 import clip
 from clip.model import CLIP
 
-from lidar_clippin.loader import build_loader
-from lidar_clippin.model.sst import LidarEncoderSST
+from lidarclip.loader import build_loader
+from lidarclip.model.sst import LidarEncoderSST
 
 
 def l2norm(t):
@@ -94,9 +94,7 @@ def train(
     clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
     clip_model.eval()
     clip_embed_dim = clip_model.visual.output_dim
-    lidar_encoder = LidarEncoderSST(
-        "lidar_clippin/model/sst_encoder_only_config.py", clip_embed_dim
-    )
+    lidar_encoder = LidarEncoderSST("lidarclip/model/sst_encoder_only_config.py", clip_embed_dim)
 
     available_gpus = torch.cuda.device_count() or None
     accelerator = "gpu" if available_gpus else "cpu"

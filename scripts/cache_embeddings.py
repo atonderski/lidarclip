@@ -8,9 +8,9 @@ import torch
 
 import clip
 
-from lidar_clippin.anno_loader import build_anno_loader
-from lidar_clippin.loader import build_loader as build_dataonly_loader
-from lidar_clippin.model.sst import LidarEncoderSST
+from lidarclip.anno_loader import build_anno_loader
+from lidarclip.loader import build_loader as build_dataonly_loader
+from lidarclip.model.sst import LidarEncoderSST
 from train import LidarClippin
 
 
@@ -23,7 +23,7 @@ DEFAULT_DATA_PATHS = {
 def load_model(args):
     clip_model, clip_preprocess = clip.load(args.clip_version)
     lidar_encoder = LidarEncoderSST(
-        "lidar_clippin/model/sst_encoder_only_config.py", clip_model.visual.output_dim
+        "lidarclip/model/sst_encoder_only_config.py", clip_model.visual.output_dim
     )
     model = LidarClippin(lidar_encoder, clip_model, 1, 1)
     load_checkpoint(model, args.checkpoint, map_location="cpu")
