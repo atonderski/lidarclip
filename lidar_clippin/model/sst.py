@@ -2,7 +2,6 @@ from mmcv import Config
 from mmdet3d.models import build_model
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from lidar_clippin.model.attention_pool import AttentionPool2d
@@ -26,18 +25,10 @@ class LidarEncoderSST(nn.Module):
             num_heads=8,
             input_dim=sst_model_conf["backbone"]["conv_out_channel"],
         )
-        # self._pooler = _mean_reduce
-        # self._pooler = nn.AdaptiveAvgPool1d(1)
-        # self._linear = nn.Linear(128, 512)
 
     def forward(self, point_cloud, no_pooling=False, return_attention=False):
         lidar_features = self._sst.extract_feat(point_cloud, None)[0]  # bs, d, h, w
         pooled_feature, attn_weights = self._pooler(lidar_features, no_pooling, return_attention)
-        # pooled_feature = lidar_features.mean(dim=(-1, -2))
-        # lidar_features = lidar_features.flatten(2) #bs, d, h*w
-        # pooled_feature = self._pooler(lidar_features) #bs, d, 1
-        # pooled_feature = pooled_feature.flatten(1) #bs, d
-        # pooled_feature = self._linear(pooled_feature)
         return pooled_feature, attn_weights
 
 

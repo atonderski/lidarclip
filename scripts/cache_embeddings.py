@@ -8,7 +8,7 @@ import torch
 
 import clip
 
-from lidar_clippin.anno_loader import build_loader as build_anno_loader
+from lidar_clippin.anno_loader import build_anno_loader
 from lidar_clippin.loader import build_loader as build_dataonly_loader
 from lidar_clippin.model.sst import LidarEncoderSST
 from train import LidarClippin

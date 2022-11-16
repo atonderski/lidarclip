@@ -2,6 +2,8 @@ import itertools
 
 
 # Use same prompts as prior art for objects
+# Copied from https://github.com/chongzhou96/MaskCLIP/blob/master/tools/maskclip_utils/prompt_engineering.py
+# The codebase for https://arxiv.org/abs/2112.01071
 OBJECT_PROMPT_TEMPLATES = [
     "a bad photo of a {}.",
     "a photo of many {}.",

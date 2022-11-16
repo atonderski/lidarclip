@@ -2,7 +2,6 @@ import argparse
 import os
 
 import pytorch_lightning as pl
-from mmcv.runner import load_checkpoint
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 
