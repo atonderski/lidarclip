@@ -1,13 +1,13 @@
-# LidarCLIP or: How I Learned to Talk to Point Clouds
+# LidarCLIP
 
-This is the official implementation of "LidarCLIP: or How I Learned to Talk to Point Clouds". The paper will soon be available on [arXiv](https://www.youtube.com/watch?v=dQw4w9WgXcQ).
+This is the official implementation of "[LidarCLIP: or How I Learned to Talk to Point Clouds](https://www.youtube.com/watch?v=dQw4w9WgXcQ)".
 
 Full code and model will be released shortly.
 
 ## Instructions
 
 - build the dockerfile `docker build -t lidarclip -f docker/Dockerfile .`
-- spin up a container with access to the dataset and at least one gpu
+- spin up a container with access to the dataset and at least one gpu. (`docker run <...> lidarclip`)
 - in the docker container, run `python train.py --datadir=<dataset-path> --checkpoint-save-dir=<checkpoint-dir> --name=<experiment-name>`. You can specify many additional flags, here is an example command: `--name lidarclip-main --batch-size 128 --workers 4 --checkpoint-save-dir /proj/lidarclip/checkpoints/ --clip-model ViT-L/14`.
 - pre-compute LidarCLIP features: `python.py scripts/cache_embeddings.py --checkpoint=<checkpoint-dir>/<checkpoint-file>`. By default these are for the once validation set, but it is easily changed with the `--dataset-name`, `--data-path`, and `--split` arguments.
 - now you can explore the capabilities of the model by running one of the notebooks, placed under `notebooks/`:
@@ -20,4 +20,4 @@ Note that some paths have to be modified in the notebooks to point your desired 
 
 ## Dataset preparation
 
-We refer to the official download and preparation instructions for (ONCE)[https://once-for-auto-driving.github.io] and (NuScenes)[http://nuscenes.org]. Once the dataset directories are set up according to the official instructions, our code works without any additional steps. Note that NuScenes is entirely optional and only used for evaluating domain shift capabilities.
+We refer to the official download and preparation instructions for [ONCE](https://once-for-auto-driving.github.io/download.html) and [NuScenes](https://nuscenes.org/nuscenes#download). Once the dataset directories are set up according to the official instructions, our code works without any additional steps. Note that NuScenes is entirely optional and only used for evaluating domain shift capabilities.
