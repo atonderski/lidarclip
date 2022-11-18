@@ -11,7 +11,8 @@ import clip
 from lidarclip.anno_loader import build_anno_loader
 from lidarclip.loader import build_loader as build_dataonly_loader
 from lidarclip.model.sst import LidarEncoderSST
-from train import LidarClippin
+
+from train import LidarClip
 
 
 DEFAULT_DATA_PATHS = {
@@ -25,7 +26,7 @@ def load_model(args):
     lidar_encoder = LidarEncoderSST(
         "lidarclip/model/sst_encoder_only_config.py", clip_model.visual.output_dim
     )
-    model = LidarClippin(lidar_encoder, clip_model, 1, 1)
+    model = LidarClip(lidar_encoder, clip_model, 1, 1)
     load_checkpoint(model, args.checkpoint, map_location="cpu")
     model.to("cuda")
     return model, clip_preprocess
@@ -75,11 +76,9 @@ def main(args):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--checkpoint",
-        type=str,
-        default="/proj/nlp4adas/checkpoints/35vsmuyp/epoch=97-step=32842.ckpt",
+        "--checkpoint", type=str, required=True, help="Full path to the checkpoint file"
     )
-    parser.add_argument("--clip-version", type=str, default="ViT-B/32")
+    parser.add_argument("--clip-version", type=str, default="ViT-L/14")
     parser.add_argument("--data-path", type=str, default=None)
     parser.add_argument("--split", type=str, default="val")
     parser.add_argument("--prefix", type=str, default="/features/cached")

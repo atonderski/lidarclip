@@ -19,7 +19,7 @@ def l2norm(t):
     return F.normalize(t, dim=-1, p=2)
 
 
-class LidarClippin(pl.LightningModule):
+class LidarClip(pl.LightningModule):
     def __init__(
         self,
         lidar_encoder: LidarEncoderSST,
@@ -39,14 +39,13 @@ class LidarClippin(pl.LightningModule):
             self.loss_func = F.mse_loss
         elif loss == "cosine":
             self.loss_func = lambda x, y: -F.cosine_similarity(x, y).mean()
-        elif loss == "normalized_mse":
-            self.loss_func = lambda x, y: F.mse_loss(l2norm(x), l2norm(y))
         else:
             raise ValueError(f"Loss {loss} not supported")
 
     def training_step(self, batch, batch_idx):
         image, point_cloud = batch
         with torch.no_grad():
+            # This could in principle be pre-computed, but that would break any joint image-lidar augmentations
             image_features = self.clip.encode_image(image)
         lidar_features, _ = self.lidar_encoder(point_cloud)
         loss = self.loss_func((image_features), (lidar_features))
@@ -113,7 +112,7 @@ def train(
 
     wandb_id = None
     wand_resume = False
-    model = LidarClippin(
+    model = LidarClip(
         lidar_encoder, clip_model, batch_size, len(train_loader) / devices, loss_function
     )
     if len(checkpoint_path) and resume_wandb_logging:
@@ -121,7 +120,7 @@ def train(
         wand_resume = "must"
 
     if len(checkpoint_path) and load_only_model:
-        model = LidarClippin.load_from_checkpoint(
+        model = LidarClip.load_from_checkpoint(
             checkpoint_path,
             lidar_encoder=lidar_encoder,
             clip_model=clip_model,
@@ -184,8 +183,13 @@ def parse_args():
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--load-only-model", action="store_true")
     parser.add_argument("--resume-wandb-logging", action="store_true")
-    parser.add_argument("--clip-model", default="ViT-B/32", help="which clip model to use")
-    parser.add_argument("--loss-function", default="mse", help="which loss function to use")
+    parser.add_argument("--clip-model", default="ViT-L/14", help="which clip model to use")
+    parser.add_argument(
+        "--loss-function",
+        default="mse",
+        help="which loss function to use",
+        choices=("cosine", "mse"),
+    )
     parser.add_argument("--nuscenes-datadir", default="/proj/berzelius-2021-92/data/nuscenes")
     parser.add_argument("--nuscenes-split", default="train")
     parser.add_argument("--dataset-name", default="once")

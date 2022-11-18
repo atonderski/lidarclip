@@ -7,7 +7,7 @@ profile = "black"
 lines_after_imports = 2
 line_length = 100
 py_version = "38"
-known_lidarclippin = "lidar-clippin"
+known_lidarclip = "lidarclip"
 known_torch = ["torch", "torchvision"]
 known_clip = ["clip"]
 sections = [
@@ -17,7 +17,7 @@ sections = [
     # Separate out torch for convenience
     "TORCH",
     "CLIP",
-    "LIDARCLIPPIN",
+    "LIDARCLIP",
     "FIRSTPARTY",
     "LOCALFOLDER",
 ]
