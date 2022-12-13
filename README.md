@@ -1,11 +1,12 @@
 # LidarCLIP
 
-This is the official implementation of "[LidarCLIP: or How I Learned to Talk to Point Clouds](https://www.youtube.com/watch?v=dQw4w9WgXcQ)".
+This is the official implementation of [LidarCLIP or: How I Learned to Talk to Point Clouds](https://giphy.com/gifs/high-quality-highqualitygifs-g01ZnwAUvutuK8GIQn/fullscreen).
 
 Full code and model will be released shortly.
 
 ## Instructions
 
+- download the [SST](https://github.com/tusen-ai/SST) submodule `git submodule update --recursive`
 - build the dockerfile `docker build -t lidarclip -f docker/Dockerfile .`
 - spin up a container with access to the dataset and at least one gpu. (`docker run <...> lidarclip`)
 - in the docker container, run `python train.py --datadir=<dataset-path> --checkpoint-save-dir=<checkpoint-dir> --name=<experiment-name>`. You can specify many additional flags, here is an example command: `--name lidarclip-main --batch-size 128 --workers 4 --checkpoint-save-dir /proj/lidarclip/checkpoints/ --clip-model ViT-L/14`.
