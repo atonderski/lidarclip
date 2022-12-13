@@ -4,6 +4,14 @@ This is the official implementation of [LidarCLIP or: How I Learned to Talk to P
 
 Full code and model will be released shortly.
 
+## Checkpoints
+
+| CLIP Version | Training Dataset | Link                                                                              |
+| ------------ | ---------------- | --------------------------------------------------------------------------------- |
+| ViT-L/14     | ONCE             | [google drive](https://drive.google.com/file/d/1ANImRlmcZ3Yoa1jbLrQO57M0-T2iIbL2) |
+| ViT-B/32     | ONCE             | [google drive](https://drive.google.com/file/d/1eNsfQDz7TYT2UCYhxKQcWIZMfAuAHkUA) |
+
+
 ## Instructions
 
 - download the [SST](https://github.com/tusen-ai/SST) submodule `git submodule update --recursive`
