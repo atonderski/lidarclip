@@ -1,6 +1,6 @@
 # LidarCLIP
 
-This is the official implementation of [LidarCLIP or: How I Learned to Talk to Point Clouds](https://giphy.com/gifs/high-quality-highqualitygifs-g01ZnwAUvutuK8GIQn/fullscreen).
+This is the official implementation of [LidarCLIP or: How I Learned to Talk to Point Clouds](https://arxiv.org/abs/2212.06858).
 
 Full code and model will be released shortly.
 
