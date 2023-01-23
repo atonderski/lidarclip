@@ -2,8 +2,6 @@
 
 This is the official implementation of [LidarCLIP or: How I Learned to Talk to Point Clouds](https://arxiv.org/abs/2212.06858).
 
-Full code and model will be released shortly.
-
 ## Checkpoints
 
 | CLIP Version | Training Dataset | Link                                                                              |
