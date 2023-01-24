@@ -341,3 +341,5 @@ cython_debug/
 wandb/
 
 features/
+
+checkpoints/

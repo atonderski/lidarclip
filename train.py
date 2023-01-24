@@ -12,7 +12,7 @@ import clip
 from clip.model import CLIP
 
 from lidarclip.loader import build_loader
-from lidarclip.model.sst import LidarEncoderSST
+from lidarclip.model.sst import SECOND, LidarEncoderSST
 
 
 def l2norm(t):
@@ -88,13 +88,20 @@ def train(
     nuscenes_datadir="/proj/berzelius-2021-92/data/nuscenes",
     nuscenes_split="train",
     dataset_name="once",
+    model="sst",
 ):
     """Train the model."""
     clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
     clip_model.eval()
     clip_embed_dim = clip_model.visual.output_dim
-    lidar_encoder = LidarEncoderSST("lidarclip/model/sst_encoder_only_config.py", clip_embed_dim)
-
+    if model == "sst":
+        lidar_encoder = LidarEncoderSST(
+            "lidarclip/model/sst_encoder_only_config.py", clip_embed_dim
+        )
+    elif model == "second":
+        lidar_encoder = SECOND("lidarclip/model/centerpoint_encoder_only.py", clip_embed_dim)
+    else:
+        raise NotImplementedError(f"model {model} not implemented yet")
     available_gpus = torch.cuda.device_count() or None
     accelerator = "gpu" if available_gpus else "cpu"
     devices = available_gpus if available_gpus else 1
@@ -193,6 +200,7 @@ def parse_args():
     parser.add_argument("--nuscenes-datadir", default="/proj/berzelius-2021-92/data/nuscenes")
     parser.add_argument("--nuscenes-split", default="train")
     parser.add_argument("--dataset-name", default="once")
+    parser.add_argument("--model", default="sst")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args
@@ -214,4 +222,5 @@ if __name__ == "__main__":
         nuscenes_datadir=args.nuscenes_datadir,
         nuscenes_split=args.nuscenes_split,
         dataset_name=args.dataset_name,
+        model=args.model,
     )
