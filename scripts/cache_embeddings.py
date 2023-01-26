@@ -62,7 +62,7 @@ def main(args):
             images = [img.to("cuda") for img in images]
             images = torch.cat([i.unsqueeze(0) for i in images])
             image_features = model.clip.encode_image(images)
-            lidar_features, _ = model.lidar_encoder(point_clouds)
+            lidar_features, _ = model.lidar_encoder(point_clouds, no_pooling=args.no_pooling)
             img_feats.append(image_features.detach().cpu())
             lidar_feats.append(lidar_features.detach().cpu())
 
@@ -85,6 +85,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--use-anno-loader", action="store_true")
     parser.add_argument("--dataset-name", type=str, default="once", choices=["once", "nuscenes"])
+    parser.add_argument("--no-pooling", action="store_true")
     args = parser.parse_args()
     if not args.data_path:
         args.data_path = DEFAULT_DATA_PATHS[args.dataset_name]

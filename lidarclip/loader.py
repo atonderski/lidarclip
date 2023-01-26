@@ -255,7 +255,13 @@ class OnceImageLidarDataset(Dataset):
         # image = to_pil_image(image)
         og_size = image.size
         image = self._img_transform(image)
-        new_size = image.shape[1:]
+        # if image is tensor or numpy array, check shape, otherwise check size
+        if isinstance(image, torch.Tensor):
+            new_size = image.shape[1:]
+        elif isinstance(image, np.ndarray):
+            new_size = image.shape[1:]
+        else:
+            new_size = image.size
         try:
             point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
             some_range = 100
