@@ -3,19 +3,130 @@ import os
 from copy import deepcopy
 
 import numpy as np
-from PIL import ImageOps
 
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 
-from lidarclip.loader import CAM_NAMES, OnceImageLidarDataset
+from lidarclip.loader import (
+    CAM_NAMES,
+    NUSCENES_CAM_NAMES,
+    NuscenesImageLidarDataset,
+    OnceImageLidarDataset,
+)
 
 
+# ONCE settings
 CENTERCROP_BOX = [450, 0, 1470, 1020]
 CLASSES = ("Car", "Truck", "Bus", "Pedestrian", "Cyclist")
 WEATHERS = ("sunny", "cloudy", "rainy")
 PERIODS = ("morning", "noon", "afternoon", "night")
+
+
+NUSCENES_CLASSES = (
+    "Car",
+    "Truck",
+    "Bus",
+    "Trailer",
+    "Pedestrian",
+    "Cyclist",
+    # "Animal",
+    # "Emergency vehicle",
+)
+
+# NuScenes classes
+NUSCENES_CLASS_MAP = {
+    "animal": None,  # Animal
+    "human.pedestrian.adult": "Pedestrian",
+    "human.pedestrian.child": "Pedestrian",
+    "human.pedestrian.construction_worker": "Pedestrian",
+    "human.pedestrian.personal_mobility": "Pedestrian",
+    "human.pedestrian.police_officer": "Pedestrian",
+    "human.pedestrian.stroller": "Pedestrian",
+    "human.pedestrian.wheelchair": "Pedestrian",
+    "movable_object.barrier": None,
+    "movable_object.debris": None,
+    "movable_object.pushable_pullable": None,
+    "movable_object.trafficcone": None,
+    "static_object.bicycle_rack": None,
+    "vehicle.bicycle": "Cyclist",
+    "vehicle.bus.bendy": "Bus",
+    "vehicle.bus.rigid": "Bus",
+    "vehicle.car": "Car",
+    "vehicle.construction": "Truck",
+    "vehicle.emergency.ambulance": None,  # Emergency vehicle
+    "vehicle.emergency.police": None,  # Emergency vehicle
+    "vehicle.motorcycle": "Cyclist",
+    "vehicle.trailer": "Trailer",
+    "vehicle.truck": "Truck",
+    "flat.driveable_surface": None,
+    "flat.other": None,
+    "flat.sidewalk": None,
+    "flat.terrain": None,
+    "static.manmade": None,
+    "static.other": None,
+    "static.vegetation": None,
+    "vehicle.ego": None,
+    "noise": None,
+}
+
+
+class NuscenesFullDataset(NuscenesImageLidarDataset):
+    def __init__(
+        self,
+        data_root: str,
+        img_transform,
+        split: str = "val",
+        min_dist: float = 0.5,
+        skip_data: bool = False,
+        skip_anno: bool = False,
+    ):
+        # assert (
+        #     split
+        #     in (
+        #         "train-only",
+        #         "trainval",
+        #         "mini",
+        #     )
+        #     or skip_anno
+        # ), "Annotations are only available for train and val splits."
+        super().__init__(
+            data_root=data_root,
+            img_transform=img_transform,
+            split=split,
+            min_dist=min_dist,
+        )
+        self._skip_anno = skip_anno
+        self._skip_data = skip_data
+
+    def __getitem__(self, index):
+        anno, meta = None, None
+        if self._skip_data:
+            img, pc = torch.zeros((3, 0, 0)), torch.zeros((0, 4))
+        else:
+            img, pc = super().__getitem__(index)
+        if not self._skip_anno:
+            anno, meta = self._get_anno_meta(index)
+        return img, pc, anno, meta
+
+    def _get_anno_meta(self, index):
+        sample_token = self._frames[index // len(NUSCENES_CAM_NAMES)]
+        sample = self._nusc.get("sample", sample_token)
+        cam_name = NUSCENES_CAM_NAMES[index % len(NUSCENES_CAM_NAMES)]
+        cam_token = sample["data"][cam_name]
+        # Note: this filters out boxes that are not visible in the camera
+        data_path, boxes, cam_intrinsic = self._nusc.get_sample_data(cam_token)
+        # TODO: object coordinate system is in camera frame
+        boxes = [box for box in boxes if NUSCENES_CLASS_MAP[box.name]]
+        anno = {
+            "names": [NUSCENES_CLASS_MAP[box.name] for box in boxes],
+            "boxes_2d": [None for _ in boxes],
+            "boxes_3d": [
+                np.array((*box.center, *box.wlh, box.orientation.radians)) for box in boxes
+            ],
+        }
+        meta = None  # TODO: implement nuscenes metadata
+        return anno, meta
 
 
 class OnceFullDataset(OnceImageLidarDataset):
@@ -101,12 +212,20 @@ class OnceFullDataset(OnceImageLidarDataset):
             annos["boxes_2d"] = annos["boxes_2d"][cam_name]
             annos = self._keep_annos_in_image(annos)
             # boxes_3d = torch.tensor(annos["boxes_3d"]).reshape(-1, 7)
-            # transformed_boxes_center_coord = self._transform_lidar_and_remove_points_outside_cam_torch(
+            # transformed_boxes_center_coord =
+            # self._transform_lidar_and_remove_points_outside_cam_torch(
             #    boxes_3d[:,:4], calib, og_size, new_size, remove_points_outside_cam=False
             # )
-            # rot = boxes_3d[:,-1:]-np.arctan2(calib["cam_to_velo"][0,2], calib["cam_to_velo"][1,2])-np.pi/2
-            # transformed_boxes = torch.cat([transformed_boxes_center_coord[:,:3], boxes_3d[:,3:-1], rot], dim=1)
-            # annos["boxes_3d"] = transformed_boxes.tolist() #x,y,z,l,w,h,rz in kitti format (x,y,z is the center of the box) x is forward, y is left, z is up
+            # rot =
+            # boxes_3d[:,-1:]
+            # -np.arctan2(calib["cam_to_velo"][0,2], calib["cam_to_velo"][1,2])
+            # -np.pi/2
+            # transformed_boxes =
+            # torch.cat([transformed_boxes_center_coord[:,:3], boxes_3d[:,3:-1], rot], dim=1)
+            # annos["boxes_3d"] =
+            # transformed_boxes.tolist()
+            # #x,y,z,l,w,h,rz in kitti format
+            # (x,y,z is the center of the box) x is forward, y is left, z is up
         meta_info = self._meta_info[sequence_id]
 
         if self._skip_data:
@@ -131,7 +250,6 @@ class OnceFullDataset(OnceImageLidarDataset):
             point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
                 point_cloud, calib, og_size, new_size
             )
-
         return image, point_cloud, annos, meta_info
 
     def _rotate_point_cloud_torch(self, point_cloud, rot_angle):
@@ -184,15 +302,15 @@ class OnceFullDataset(OnceImageLidarDataset):
         """
         # Transform point cloud to box coordinate system
         box_3d = box_3d.reshape(-1, 7)
-        x, y, z, l, w, h, rz = box_3d[0]
+        x, y, z, length, w, h, rz = box_3d[0]
         point_cloud = point_cloud - torch.tensor(
             [[x, y, z, 0]], dtype=point_cloud.dtype, device=point_cloud.device
         )
         point_cloud = self._rotate_point_cloud_torch(point_cloud, rz)
         # Get points within box
         mask = (
-            (point_cloud[:, 0] >= -l / 2)
-            & (point_cloud[:, 0] <= l / 2)
+            (point_cloud[:, 0] >= -length / 2)
+            & (point_cloud[:, 0] <= length / 2)
             & (point_cloud[:, 1] >= -w / 2)
             & (point_cloud[:, 1] <= w / 2)
             & (point_cloud[:, 2] >= -h / 2)
@@ -249,16 +367,25 @@ def build_anno_loader(
     return_points_per_obj=False,
     dataset_name="once",
 ):
-    if dataset_name != "once" and not skip_anno:
-        raise NotImplementedError("Only ONCE dataset has annotation support.")
-    dataset = OnceFullDataset(
-        datadir,
-        img_transform=clip_preprocess,
-        split=split,
-        skip_data=skip_data,
-        skip_anno=skip_anno,
-        return_points_per_obj=return_points_per_obj,
-    )
+    if dataset_name == "once":
+        dataset = OnceFullDataset(
+            datadir,
+            img_transform=clip_preprocess,
+            split=split,
+            skip_data=skip_data,
+            skip_anno=skip_anno,
+            return_points_per_obj=return_points_per_obj,
+        )
+    elif dataset_name == "nuscenes":
+        dataset = NuscenesFullDataset(
+            datadir,
+            img_transform=clip_preprocess,
+            split=split,
+            skip_data=skip_data,
+            skip_anno=skip_anno,
+        )
+    else:
+        raise ValueError(f"Unsupported dataset name {dataset_name}")
     loader = DataLoader(
         dataset,
         num_workers=num_workers,
@@ -270,7 +397,7 @@ def build_anno_loader(
     return loader
 
 
-def demo_dataset():
+def demo_once():
     import matplotlib.pyplot as plt
     from einops import rearrange
 
@@ -302,5 +429,20 @@ def demo_dataset():
     plt.show()
 
 
+def demo_nuscenes():
+    datadir = "/Users/s0000960/data/nuscenes"
+    loader = build_anno_loader(
+        datadir,
+        lambda x: x,
+        num_workers=0,
+        batch_size=2,
+        split="mini",
+        skip_data=True,
+        dataset_name="nuscenes",
+    )
+    images, lidars, annos, metas = next(iter(loader))
+
+
 if __name__ == "__main__":
-    demo_dataset()
+    # demo_once()
+    demo_nuscenes()

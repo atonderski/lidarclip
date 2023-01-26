@@ -12,11 +12,10 @@ from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.data_classes import LidarPointCloud
 from nuscenes.utils.geometry_utils import view_points
 from nuscenes.utils.splits import create_splits_scenes
-from PIL import Image, ImageOps
+from PIL import Image
 from pyquaternion import Quaternion
 
 import torch
-from torch import from_numpy
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
 
@@ -113,10 +112,11 @@ class NuscenesImageLidarDataset(Dataset):
         # Apply transforms
         og_size = im.size
         im = self._img_transform(im)
-        new_size = im.shape[1:]
 
-        # Points live in the point sensor frame. So they need to be transformed via global to the image plane.
-        # First step: transform the pointcloud to the ego vehicle frame for the timestamp of the sweep.
+        # Points live in the point sensor frame.
+        # So they need to be transformed via global to the image plane.
+        # First step:
+        # transform the pointcloud to the ego vehicle frame for the timestamp of the sweep.
         cs_record = self._nusc.get("calibrated_sensor", pointsensor["calibrated_sensor_token"])
         pc.rotate(Quaternion(cs_record["rotation"]).rotation_matrix)
         pc.translate(np.array(cs_record["translation"]))
@@ -126,7 +126,8 @@ class NuscenesImageLidarDataset(Dataset):
         pc.rotate(Quaternion(poserecord["rotation"]).rotation_matrix)
         pc.translate(np.array(poserecord["translation"]))
 
-        # Third step: transform from global into the ego vehicle frame for the timestamp of the image.
+        # Third step:
+        # transform from global into the ego vehicle frame for the timestamp of the image.
         poserecord = self._nusc.get("ego_pose", cam["ego_pose_token"])
         pc.translate(-np.array(poserecord["translation"]))
         pc.rotate(Quaternion(poserecord["rotation"]).rotation_matrix.T)
@@ -145,8 +146,10 @@ class NuscenesImageLidarDataset(Dataset):
             pc.points[:3, :], np.array(cs_record["camera_intrinsic"]), normalize=True
         )
 
-        # Remove points that are either outside or behind the camera. Leave a margin of 1 pixel for aesthetic reasons.
-        # Also make sure points are at least 1m in front of the camera to avoid seeing the lidar points on the camera
+        # Remove points that are either outside or behind the camera.
+        # Leave a margin of 1 pixel for aesthetic reasons.
+        # Also make sure points are at least 1m in front of the camera to avoid
+        # seeing the lidar points on the camera
         # casing for non-keyframes which are slightly out of sync.
         w_og, h_og = og_size
         left_border = w_og // 2 - h_og // 2
@@ -249,7 +252,7 @@ class OnceImageLidarDataset(Dataset):
         sequence_id, frame_id, cam_idx, seq_idx, cam_name = self.map_index(index)
         try:
             image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
-        except:
+        except FileNotFoundError:
             print(f"Failed to load image {sequence_id}/{frame_id}/{cam_name}")
             # return self.__getitem__(np.random.randint(0, len(self._frames)))
         # image = to_pil_image(image)
@@ -274,7 +277,7 @@ class OnceImageLidarDataset(Dataset):
                 & (point_cloud[:, 2] < some_range)
             )
             point_cloud = point_cloud[mask]
-        except:
+        except FileNotFoundError:
             print(f"Failed to load point cloud {sequence_id}/{frame_id}/{cam_name}")
 
         calib = {
@@ -329,9 +332,6 @@ class OnceImageLidarDataset(Dataset):
 
         # project to image coords
         w_og, h_og = og_size
-        og_short_side = min(w_og, h_og)
-        w_new, h_new = new_size
-        scaling = og_short_side / w_new
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             calibration["cam_intrinsic"].numpy(),
             calibration["distortion"].numpy(),
@@ -342,7 +342,8 @@ class OnceImageLidarDataset(Dataset):
         points_img = torch.matmul(points_cam[:, :3], torch.as_tensor(new_cam_intrinsic).T)
         points_img = points_img / points_img[:, [2]]
         # w_og // 2 = middle of image
-        # h_og // 2 = half new image width due to wide aspect ratio 16:9 (that is cropped to square 9:9)
+        # h_og // 2 = half new image width due to wide aspect ratio 16:9
+        # (that is cropped to square 9:9)
         left_border = w_og // 2 - h_og // 2
         right_border = w_og // 2 + h_og // 2
         mask = (
@@ -389,9 +390,6 @@ class OnceImageLidarDataset(Dataset):
 
         # project to image coords
         w_og, h_og = og_size
-        og_short_side = min(w_og, h_og)
-        w_new, h_new = new_size
-        scaling = og_short_side / w_new
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             calibration["cam_intrinsic"],
             calibration["distortion"],
@@ -465,9 +463,6 @@ class OnceImageLidarDataset(Dataset):
     @staticmethod
     def _remove_points_outside_cam(points_cam, og_size, new_size, cam_calib):
         w_og, h_og = og_size
-        og_short_side = min(w_og, h_og)
-        w_new, h_new = new_size
-        scaling = og_short_side / w_new
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             cam_calib["cam_intrinsic"],
             cam_calib["distortion"],

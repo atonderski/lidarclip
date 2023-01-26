@@ -2,24 +2,5 @@
 line-length = 100
 target-version = ["py38"]
 
-[tool.isort]
-profile = "black"
-lines_after_imports = 2
-line_length = 100
-py_version = "38"
-known_lidarclip = "lidarclip"
-known_torch = ["torch", "torchvision"]
-known_clip = ["clip"]
-sections = [
-    "FUTURE",
-    "STDLIB",
-    "THIRDPARTY",
-    # Separate out torch for convenience
-    "TORCH",
-    "CLIP",
-    "LIDARCLIP",
-    "FIRSTPARTY",
-    "LOCALFOLDER",
-]
-# forced_separate = []
-
+[tool.ruff]
+line-length = 100
