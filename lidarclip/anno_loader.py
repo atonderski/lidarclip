@@ -205,29 +205,6 @@ class OnceFullDataset(OnceImageLidarDataset):
             "distortion": self._cam_distortions[seq_idx, cam_idx],
         }
 
-        if self._skip_anno:
-            annos = None
-        else:
-            annos = deepcopy(self._annos[sequence_id][frame_id])
-            annos["boxes_2d"] = annos["boxes_2d"][cam_name]
-            annos = self._keep_annos_in_image(annos)
-            # boxes_3d = torch.tensor(annos["boxes_3d"]).reshape(-1, 7)
-            # transformed_boxes_center_coord =
-            # self._transform_lidar_and_remove_points_outside_cam_torch(
-            #    boxes_3d[:,:4], calib, og_size, new_size, remove_points_outside_cam=False
-            # )
-            # rot =
-            # boxes_3d[:,-1:]
-            # -np.arctan2(calib["cam_to_velo"][0,2], calib["cam_to_velo"][1,2])
-            # -np.pi/2
-            # transformed_boxes =
-            # torch.cat([transformed_boxes_center_coord[:,:3], boxes_3d[:,3:-1], rot], dim=1)
-            # annos["boxes_3d"] =
-            # transformed_boxes.tolist()
-            # #x,y,z,l,w,h,rz in kitti format
-            # (x,y,z is the center of the box) x is forward, y is left, z is up
-
-            # TODO: object coordinate system is in lidar frame, not the point cloud!
         meta_info = self._meta_info[sequence_id]
 
         if self._skip_data:
@@ -238,20 +215,50 @@ class OnceFullDataset(OnceImageLidarDataset):
             image = self._img_transform(image)
             new_size = image.shape[1:]
             point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
-
-            if self._return_points_per_obj and not self._skip_anno:
-                points_per_obj = self._get_points_per_obj(annos, point_cloud)
-                annos["points_per_obj"] = points_per_obj
-                annos["seq_info"] = {
-                    "sequence_id": sequence_id,
-                    "frame_id": frame_id,
-                    "cam_name": cam_name,
-                    "seq_idx": seq_idx,
-                }
-
             point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
                 point_cloud, calib, og_size, new_size
             )
+
+        if self._skip_anno:
+            annos = None
+        else:
+            annos = deepcopy(self._annos[sequence_id][frame_id])
+            annos["boxes_2d"] = annos["boxes_2d"][cam_name]
+            annos = self._keep_annos_in_image(annos)
+            boxes_3d = torch.tensor(annos["boxes_3d"]).reshape(-1, 7)
+            transformed_boxes_center_coord = (
+                self._transform_lidar_and_remove_points_outside_cam_torch(
+                    boxes_3d[:, :4], calib, og_size, new_size, remove_points_outside_cam=False
+                )
+            )
+            # Rotation matrix to go from camera to lidar
+            rot_mat = calib["cam_to_velo"][:3, :3]
+            # Rotation in radians
+            rots = boxes_3d[:, -1:]
+            # Put rotation as a vector with origo in center of lidar
+            rot_points = torch.cat([rots.cos(), rots.sin(), torch.zeros_like(rots)], dim=1)
+            # Rotate the rotation vector to camera coordinate system
+            rot_points = rot_points @ rot_mat.inverse().T
+            # Get the angle of the vector in camera coordinate system
+            rots = torch.atan2(rot_points[:, 2:3], rot_points[:, 0:1])
+            # Remove pi/2 to get the angle of the box in KITTI format
+            rots = rots - np.pi / 2
+            transformed_boxes = torch.cat(
+                [transformed_boxes_center_coord[:, :3], boxes_3d[:, 3:-1], rots], dim=1
+            )
+            annos["boxes_3d"] = transformed_boxes.tolist()
+            # x,y,z,l,w,h,rz in kitti format
+            # (x,y,z is the center of the box) x is forward, y is left, z is up
+
+            points_per_obj = self._get_points_per_obj(annos, point_cloud)
+            annos["points_per_obj"] = points_per_obj
+            annos["seq_info"] = {
+                "sequence_id": sequence_id,
+                "frame_id": frame_id,
+                "cam_name": cam_name,
+                "seq_idx": seq_idx,
+            }
+
         return image, point_cloud, annos, meta_info
 
     def _rotate_point_cloud_torch(self, point_cloud, rot_angle):
