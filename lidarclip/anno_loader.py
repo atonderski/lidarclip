@@ -26,6 +26,7 @@ class OnceFullDataset(OnceImageLidarDataset):
         split: str = "val",
         skip_data: bool = False,
         skip_anno: bool = False,
+        return_points_per_obj: bool = False,
     ):
         assert (
             split
@@ -35,6 +36,9 @@ class OnceFullDataset(OnceImageLidarDataset):
             )
             or skip_anno
         ), "Annotations are only available for train and val splits."
+        assert not (
+            return_points_per_obj and (skip_data or skip_anno)
+        ), "Cannot skip data/anno if not returning points per object."
         super().__init__(
             data_root=data_root,
             img_transform=img_transform,
@@ -42,6 +46,7 @@ class OnceFullDataset(OnceImageLidarDataset):
         )
         self._skip_anno = skip_anno
         self._skip_data = skip_data
+        self._return_points_per_obj = return_points_per_obj
         self._setup_for_annos()
 
     def _setup_for_annos(self):
@@ -83,6 +88,27 @@ class OnceFullDataset(OnceImageLidarDataset):
 
         """
         sequence_id, frame_id, cam_idx, seq_idx, cam_name = self.map_index(index)
+        calib = {
+            "cam_to_velo": self._cam_to_velos[seq_idx, cam_idx],
+            "cam_intrinsic": self._cam_intrinsics[seq_idx, cam_idx],
+            "distortion": self._cam_distortions[seq_idx, cam_idx],
+        }
+
+        if self._skip_anno:
+            annos = None
+        else:
+            annos = deepcopy(self._annos[sequence_id][frame_id])
+            annos["boxes_2d"] = annos["boxes_2d"][cam_name]
+            annos = self._keep_annos_in_image(annos)
+            # boxes_3d = torch.tensor(annos["boxes_3d"]).reshape(-1, 7)
+            # transformed_boxes_center_coord = self._transform_lidar_and_remove_points_outside_cam_torch(
+            #    boxes_3d[:,:4], calib, og_size, new_size, remove_points_outside_cam=False
+            # )
+            # rot = boxes_3d[:,-1:]-np.arctan2(calib["cam_to_velo"][0,2], calib["cam_to_velo"][1,2])-np.pi/2
+            # transformed_boxes = torch.cat([transformed_boxes_center_coord[:,:3], boxes_3d[:,3:-1], rot], dim=1)
+            # annos["boxes_3d"] = transformed_boxes.tolist() #x,y,z,l,w,h,rz in kitti format (x,y,z is the center of the box) x is forward, y is left, z is up
+        meta_info = self._meta_info[sequence_id]
+
         if self._skip_data:
             image, point_cloud = torch.zeros((3, 0, 0)), torch.zeros((0, 4))
         else:
@@ -91,22 +117,97 @@ class OnceFullDataset(OnceImageLidarDataset):
             image = self._img_transform(image)
             new_size = image.shape[1:]
             point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
-            calib = {
-                "cam_to_velo": self._cam_to_velos[seq_idx, cam_idx],
-                "cam_intrinsic": self._cam_intrinsics[seq_idx, cam_idx],
-                "distortion": self._cam_distortions[seq_idx, cam_idx],
-            }
+
+            if self._return_points_per_obj and not self._skip_anno:
+                points_per_obj = self._get_points_per_obj(annos, point_cloud)
+                annos["points_per_obj"] = points_per_obj
+                annos["seq_info"] = {
+                    "sequence_id": sequence_id,
+                    "frame_id": frame_id,
+                    "cam_name": cam_name,
+                    "seq_idx": seq_idx,
+                }
+
             point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
                 point_cloud, calib, og_size, new_size
             )
-        if self._skip_anno:
-            annos = None
-        else:
-            annos = deepcopy(self._annos[sequence_id][frame_id])
-            annos["boxes_2d"] = annos["boxes_2d"][cam_name]
-            annos = self._keep_annos_in_image(annos)
-        meta_info = self._meta_info[sequence_id]
+
         return image, point_cloud, annos, meta_info
+
+    def _rotate_point_cloud_torch(self, point_cloud, rot_angle):
+        """Rotate point cloud by rot_angle around z axis.
+
+        Args:
+            point_cloud: (tensor) [N, 4] in ONCE format
+            rot_angle: (float) rotation angle in radians
+
+        Returns:
+            rotated_point_cloud: (tensor) [N, 4] in ONCE format
+
+        """
+        rot_sin = torch.sin(rot_angle)
+        rot_cos = torch.cos(rot_angle)
+        rotation_matrix = torch.tensor(
+            [[rot_cos, -rot_sin, 0], [rot_sin, rot_cos, 0], [0, 0, 1]],
+            dtype=point_cloud.dtype,
+            device=point_cloud.device,
+        )
+        # pad rotation matrix to 4x4
+        rotation_matrix = torch.cat(
+            [
+                rotation_matrix,
+                torch.zeros((1, 3), dtype=point_cloud.dtype, device=point_cloud.device),
+            ],
+            dim=0,
+        )
+        rotation_matrix = torch.cat(
+            [
+                rotation_matrix,
+                torch.zeros((4, 1), dtype=point_cloud.dtype, device=point_cloud.device),
+            ],
+            dim=1,
+        )
+        rotation_matrix[3, 3] = 1
+        point_cloud = point_cloud @ rotation_matrix
+        return point_cloud
+
+    def _get_points_in_box(self, box_3d, point_cloud):
+        """Get points inside of 3d box.
+
+        Args:
+            box_3d: (tensor) [x, y, z, l, w, h, rz] in ONCE format (left, back, up)
+            point_cloud: (tensor) [N, 4] in ONCE format
+
+        Returns:
+            points_in_box: (tensor) [N, 4] in ONCE format
+
+        """
+        # Transform point cloud to box coordinate system
+        box_3d = box_3d.reshape(-1, 7)
+        x, y, z, l, w, h, rz = box_3d[0]
+        point_cloud = point_cloud - torch.tensor(
+            [[x, y, z, 0]], dtype=point_cloud.dtype, device=point_cloud.device
+        )
+        point_cloud = self._rotate_point_cloud_torch(point_cloud, rz)
+        # Get points within box
+        mask = (
+            (point_cloud[:, 0] >= -l / 2)
+            & (point_cloud[:, 0] <= l / 2)
+            & (point_cloud[:, 1] >= -w / 2)
+            & (point_cloud[:, 1] <= w / 2)
+            & (point_cloud[:, 2] >= -h / 2)
+            & (point_cloud[:, 2] <= h / 2)
+        )
+        points_in_box = point_cloud[mask]
+        return points_in_box
+
+    def _get_points_per_obj(self, annos, point_cloud):
+        boxes_3d = torch.tensor(annos["boxes_3d"]).reshape(-1, 7)
+        points_per_obj = []
+        for box_3d in boxes_3d:
+            box_3d = box_3d.unsqueeze(0)
+            points_per_obj.append(self._get_points_in_box(box_3d, point_cloud))
+        return points_per_obj
 
     def _keep_annos_in_image(self, annos):
         # Check if any part of the bounding box is within the CENTERCROP_BOX (xyxy format)
@@ -145,6 +246,7 @@ def build_anno_loader(
     shuffle=False,
     skip_data=False,
     skip_anno=False,
+    return_points_per_obj=False,
     dataset_name="once",
 ):
     if dataset_name != "once" and not skip_anno:
@@ -155,6 +257,7 @@ def build_anno_loader(
         split=split,
         skip_data=skip_data,
         skip_anno=skip_anno,
+        return_points_per_obj=return_points_per_obj,
     )
     loader = DataLoader(
         dataset,

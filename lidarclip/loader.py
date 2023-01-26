@@ -303,7 +303,7 @@ class OnceImageLidarDataset(Dataset):
 
     @staticmethod
     def _transform_lidar_and_remove_points_outside_cam_torch(
-        points_lidar, calibration, og_size, new_size
+        points_lidar, calibration, og_size, new_size, remove_points_outside_cam=True
     ):
 
         # project to cam coords
@@ -319,7 +319,11 @@ class OnceImageLidarDataset(Dataset):
         points_cam = torch.matmul(points_cam, torch.linalg.inv(cam_2_lidar).T)
 
         # discard points behind camera
-        mask = points_cam[:, 2] > 0
+        mask = (
+            points_cam[:, 2] > 0
+            if remove_points_outside_cam
+            else torch.ones_like(points_cam[:, 2], dtype=torch.bool)
+        )
         points_cam = points_cam[mask]
         points_lidar = points_lidar[mask]
 
@@ -342,10 +346,14 @@ class OnceImageLidarDataset(Dataset):
         left_border = w_og // 2 - h_og // 2
         right_border = w_og // 2 + h_og // 2
         mask = (
-            (left_border < points_img[:, 0])
-            & (points_img[:, 0] < right_border)
-            & (0 < points_img[:, 1])
-            & (points_img[:, 1] < h_og)
+            (
+                (left_border < points_img[:, 0])
+                & (points_img[:, 0] < right_border)
+                & (0 < points_img[:, 1])
+                & (points_img[:, 1] < h_og)
+            )
+            if remove_points_outside_cam
+            else torch.ones_like(points_img[:, 0], dtype=torch.bool)
         )
 
         # add reflectance
