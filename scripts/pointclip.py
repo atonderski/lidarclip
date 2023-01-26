@@ -63,6 +63,8 @@ def print_stats(labels, preds):
 
 
 def main(args):
+    # create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
     # load data
     data = torch.load(args.data_dir)
     # load model
