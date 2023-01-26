@@ -226,6 +226,8 @@ class OnceFullDataset(OnceImageLidarDataset):
             # transformed_boxes.tolist()
             # #x,y,z,l,w,h,rz in kitti format
             # (x,y,z is the center of the box) x is forward, y is left, z is up
+
+            # TODO: object coordinate system is in lidar frame, not the point cloud!
         meta_info = self._meta_info[sequence_id]
 
         if self._skip_data:
