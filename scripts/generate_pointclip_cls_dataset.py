@@ -90,8 +90,10 @@ def main(args):
     )
 
     out = []
+    i = 0
     with torch.no_grad():
         for batch in tqdm(loader):
+            i = i + 1
             images, point_clouds, annos, meta_info = batch
 
             if args.visulize_objects:
@@ -100,6 +102,9 @@ def main(args):
                         visulize_object(anno, obj_idx)
 
             out.extend(annos)
+
+            if i % 100 == 0:
+                torch.save(out, os.path.join(args.output_dir, f"{args.split}_{i}.pt"))
 
     torch.save(out, os.path.join(args.output_dir, f"{args.split}.pt"))
 
