@@ -12,11 +12,10 @@ from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.data_classes import LidarPointCloud
 from nuscenes.utils.geometry_utils import view_points
 from nuscenes.utils.splits import create_splits_scenes
-from PIL import Image, ImageOps
+from PIL import Image
 from pyquaternion import Quaternion
 
 import torch
-from torch import from_numpy
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
 
@@ -113,7 +112,6 @@ class NuscenesImageLidarDataset(Dataset):
         # Apply transforms
         og_size = im.size
         im = self._img_transform(im)
-        new_size = im.shape[1:]
 
         # Points live in the point sensor frame. So they need to be transformed via global to the image plane.
         # First step: transform the pointcloud to the ego vehicle frame for the timestamp of the sweep.
@@ -325,9 +323,6 @@ class OnceImageLidarDataset(Dataset):
 
         # project to image coords
         w_og, h_og = og_size
-        og_short_side = min(w_og, h_og)
-        w_new, h_new = new_size
-        scaling = og_short_side / w_new
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             calibration["cam_intrinsic"].numpy(),
             calibration["distortion"].numpy(),
@@ -381,9 +376,6 @@ class OnceImageLidarDataset(Dataset):
 
         # project to image coords
         w_og, h_og = og_size
-        og_short_side = min(w_og, h_og)
-        w_new, h_new = new_size
-        scaling = og_short_side / w_new
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             calibration["cam_intrinsic"],
             calibration["distortion"],
@@ -457,9 +449,6 @@ class OnceImageLidarDataset(Dataset):
     @staticmethod
     def _remove_points_outside_cam(points_cam, og_size, new_size, cam_calib):
         w_og, h_og = og_size
-        og_short_side = min(w_og, h_og)
-        w_new, h_new = new_size
-        scaling = og_short_side / w_new
         new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
             cam_calib["cam_intrinsic"],
             cam_calib["distortion"],
