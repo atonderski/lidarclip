@@ -340,14 +340,14 @@ class TextualEncoder(nn.Module):
         self.clip_model = clip_model
         self.dtype = clip_model.dtype
         self.num_views = num_views
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def forward(self):
         temp = CUSTOM_TEMPLATES["ONCE"]
         prompts = [temp.format(c.replace("_", " ")) for c in self.classnames]
         prompts = torch.cat([clip.tokenize(p) for p in prompts])
         prompts = prompts
-        if torch.cuda.is_available():
-            prompts = prompts.cuda()
+        prompts = prompts.to(self.device)
 
         text_feat = self.clip_model.encode_text(prompts).repeat(1, self.num_views)
         return text_feat

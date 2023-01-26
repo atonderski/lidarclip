@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="/home/s0001396/Documents/phd/datasets/once/cls",
+        default="/mimer/NOBACKUP/groups/clippin/datasets/once/cls",
         help="Output directory",
         choices=[
             "/mimer/NOBACKUP/groups/clippin/datasets/once/cls",
@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument(
         "--data-dir",
         type=str,
-        default="/home/s0001396/Documents/phd/datasets/once/cls/val.pt",
+        default="/mimer/NOBACKUP/groups/clippin/datasets/once/cls/val.pt",
         help="Data directory",
         choices=[
             "/mimer/NOBACKUP/groups/clippin/datasets/once/cls/val.pt",
@@ -50,23 +50,26 @@ def print_stats(labels, preds):
     print("Accuracy: ", np.sum(np.array(labels) == np.array(preds)) / len(labels))
     # print class-wise accuracy
     print("Class-wise accuracy:")
-    for c in CLASSES:
+    for c in range(len(CLASSES)):
         mask = np.array(labels) == c
 
-        print(c, np.sum(np.array(labels)[mask] == np.array(preds)[mask]) / np.sum(mask))
+        print(c, np.sum(np.array(labels)[mask] == np.array(preds)[mask]) / (np.sum(mask) + 1e-6))
 
     # print confusion matrix using scikit-learn
     print("Confusion matrix:")
     from sklearn.metrics import confusion_matrix
 
-    print(confusion_matrix(labels, preds, labels=CLASSES))
+    print(confusion_matrix(labels, preds, labels=list(range(len(CLASSES)))))
 
 
 def main(args):
+    # create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
     # load data
     data = torch.load(args.data_dir)
     # load model
-    clip_model, clip_preprocess = clip.load(args.clip_model, device="cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    clip_model, clip_preprocess = clip.load(args.clip_model, device=device)
 
     pointclip_zs = PointCLIP_ZS()
     pointclip_zs.build_model(clip_model, CLASSES, args.num_views)
@@ -100,7 +103,7 @@ def main(args):
             labels.append(label)
             preds.append(predicted_label)
 
-            if counter % 100 == 0:
+            if counter % 1000 == 0:
                 print("Processed {} samples".format(counter))
                 print_stats(labels, preds)
 
