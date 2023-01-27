@@ -9,8 +9,10 @@ import torch
 import clip
 
 from lidarclip.anno_loader import CLASSES
+import math
 
-DISTANCE_THRESH = 40
+DISTANCE_THRESH = 400
+POINT_THRESH = 0
 
 
 def parse_args():
@@ -108,7 +110,8 @@ def main(args):
             x, y, z, length, w, h, ry = anno["boxes_3d"][j]
 
             if len(args.pre_computed_feat_path) > 0:
-                keep = np.sqrt(x**2 + y**2) > DISTANCE_THRESH
+                keep = math.sqrt(x**2 + y**2) < DISTANCE_THRESH
+                keep = keep and (len(pc) >= POINT_THRESH)
                 mask.append(keep)
                 continue
 
@@ -138,8 +141,8 @@ def main(args):
     print("Processed {} samples".format(counter))
 
     if len(args.pre_computed_feat_path) > 0:
-        print(f"Keep {np.sum(mask)} samples within {DISTANCE_THRESH}m")
-        mask = torch.tensor(mask).to(pointclip_zs.feat_store.device)
+        print(f"Keep {np.sum(mask)} within {DISTANCE_THRESH}m and at least {POINT_THRESH} points")
+        mask = torch.tensor(mask).to(pointclip_zs.feat_store.device).to(torch.bool)
         labels = pointclip_zs.label_store[mask].cpu().numpy()
 
         # compute logits
