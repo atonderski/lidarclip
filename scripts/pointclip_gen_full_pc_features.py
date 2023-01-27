@@ -97,8 +97,8 @@ def main(args):
 
     print("Finished processing all samples")
 
-    filename = f"features_fullPC_{args.clip_model}.pt"
-    torch.save(torch.cat(pointclip_zs.feat_store, dim=0), os.path.join(args.output_dir, filename))
+    filename = f"features_fullPC_{args.clip_model.replace('/', '')}.pt"
+    torch.save(torch.cat(pointclip_zs.feat_store, dim=0), os.path.join(args.output, filename))
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ import clip
 
 from lidarclip.anno_loader import CLASSES
 
+DISTANCE_THRESH = 40
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -41,6 +43,9 @@ def parse_args():
         choices=["ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16", "ViT-L/14"],
     )
     parser.add_argument("--num-views", type=int, default=6, help="Number of views")
+    parser.add_argument(
+        "--pre-computed-feat-path", type=str, default="", help="Path to precomputed features to use"
+    )
     args = parser.parse_args()
     return args
 
@@ -76,7 +81,13 @@ def main(args):
     labels = []
     preds = []
 
+    if len(args.pre_computed_feat_path) > 0:
+        print("Loading precomputed features")
+        pointclip_zs.feat_store = torch.load(args.pre_computed_feat_path)
+        pointclip_zs.label_store = torch.load(args.pre_computed_feat_path.replace("feat", "label"))
+
     counter = 0
+    mask = []
     for i in range(len(data)):
         anno = data[i]
         for j in range(len(anno["names"])):
@@ -84,7 +95,14 @@ def main(args):
 
             label = CLASSES.index(anno["names"][j])
             pc = anno["points_per_obj"][j]
+
             x, y, z, length, w, h, ry = anno["boxes_3d"][j]
+
+            if len(args.pre_computed_feat_path) > 0:
+                keep = np.sqrt(x**2 + y**2) > DISTANCE_THRESH
+                mask.append(keep)
+                continue
+
             normalizing_factor = max(length, w, h) / 2
             # normalize pc to [-1,1]
             pc[:, :3] = pc[:, :3] / normalizing_factor
@@ -109,7 +127,26 @@ def main(args):
 
     print("Finished processing all samples")
     print("Processed {} samples".format(counter))
+
+    if len(args.pre_computed_feat_path) > 0:
+        print(f"Keep {np.sum(mask)} samples within {DISTANCE_THRESH}m")
+        mask = torch.tensor(mask).to(pointclip_zs.feat_store.device)
+        labels = pointclip_zs.label_store[mask].cpu().numpy()
+
+        # compute logits
+        text_feat = pointclip_zs.textual_encoder()
+        text_feat = text_feat / text_feat.norm(dim=-1, keepdim=True)
+
+        logit_scale = pointclip_zs.logit_scale.exp()
+
+        image_feat = pointclip_zs.feat_store[mask]
+        logits = logit_scale * image_feat @ text_feat.t() * 1.0
+        preds = logits.argmax(dim=-1).cpu().numpy()
+
     print_stats(labels, preds)
+
+    if len(args.pre_computed_feat_path) > 0:
+        return
 
     label_filename = f"label_store_{args.clip_model.replace('/', '')}.pt"
     feat_filename = f"label_store_{args.clip_model.replace('/', '')}.pt"
