@@ -41,8 +41,14 @@ def search_weights_zs(args):
 
     print("\n***** Searching for view weights *****")
 
-    image_feat = torch.load(osp.join(args.input_dir, "features.pt"))
-    labels = torch.load(osp.join(args.input_dir, "labels.pt"))
+    image_feat = torch.load(
+        osp.join(args.input_dir, f"feat_store_{args.clip_model.replace('/', '')}.pt")
+    )
+    image_feat = torch.cat(image_feat, dim=0).cuda()
+    labels = torch.load(
+        osp.join(args.input_dir, f"label_store_{args.clip_model.replace('/', '')}.pt")
+    )
+    labels = torch.tensor(labels).cuda()
 
     clip_model, _ = clip.load(args.clip_model, device="cuda")
     clip_model.eval()
@@ -124,6 +130,8 @@ def parse_args():
         type=int,
         default=1,
     )
+
+    return parser.parse_args()
 
 
 def main(args):
