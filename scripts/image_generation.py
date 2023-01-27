@@ -50,7 +50,7 @@ def load_pipeline(args):
 
     guided_pipeline = DiffusionPipeline.from_pretrained(
         model_id,
-        custom_pipeline="clip_guided_stable_diffusion",
+        custom_pipeline="/mimer/NOBACKUP/groups/clippin/users/georghe/lidar-clippin/scripts/clip_guided_stable_diffusion_pipeline/",
         clip_model=clip_model,
         feature_extractor=feature_extractor,
         scheduler=scheduler,
@@ -145,8 +145,10 @@ def main(args):
     # mkdir
     os.makedirs(args.output_dir, exist_ok=True)
     # Get indexes
-    with open(args.indexes_path, "r") as f:
-        indexes = [int(x) for x in f.readlines()]
+    # with open(args.indexes_path, "r") as f:
+    #    indexes = [int(x) for x in f.readlines()]
+    generated_imgs = os.listdir("/mimer/NOBACKUP/groups/clippin/gen_images/once_val_lidar_selected")
+    indexes = [int(img.split(".")[0].split("_")[0]) for img in generated_imgs]
     # Discard indexes
     indexes = indexes[args.start_idx :: args.every_n]
     # Check if image already exists
