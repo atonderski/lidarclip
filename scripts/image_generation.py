@@ -5,14 +5,11 @@
 import argparse
 import os
 
+import torch
 from diffusers import DiffusionPipeline, LMSDiscreteScheduler, PNDMScheduler
 from PIL import Image
 from tqdm import tqdm
 from transformers import CLIPFeatureExtractor, CLIPModel
-
-import torch
-
-from lidarclip.helpers import try_paths
 
 
 def image_grid(imgs, rows, cols, grid=None):
@@ -29,9 +26,13 @@ def image_grid(imgs, rows, cols, grid=None):
 # Load the pipeline
 def load_pipeline(args):
     model_id = "CompVis/stable-diffusion-v1-4"  # @param {type: "string"}
-    clip_model_id = (
-        args.clip_model_id
-    )  # @param ["laion/CLIP-ViT-B-32-laion2B-s34B-b79K", "laion/CLIP-ViT-L-14-laion2B-s32B-b82K", "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", "laion/CLIP-ViT-g-14-laion2B-s12B-b42K", "openai/clip-vit-base-patch32", "openai/clip-vit-base-patch16", "openai/clip-vit-large-patch14"] {allow-input: true}
+    clip_model_id = args.clip_model_id  # @param ["laion/CLIP-ViT-B-32-laion2B-s34B-b79K",
+    # "laion/CLIP-ViT-L-14-laion2B-s32B-b82K",
+    # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+    # "laion/CLIP-ViT-g-14-laion2B-s12B-b42K",
+    # "openai/clip-vit-base-patch32",
+    # "openai/clip-vit-base-patch16",
+    # "openai/clip-vit-large-patch14"]
     scheduler = "plms"  # @param ['plms', 'lms']
 
     if scheduler == "lms":
@@ -65,7 +66,7 @@ def load_clip_features(args):
     return features
 
 
-def gen_images(args, guided_pipeline, features):
+def gen_images(args, guided_pipeline, features, prompt=["a photorealistic image"]):
     batch_size = features.shape[0]
     num_cutouts = args.num_cutouts
     guided_pipeline.clip_model.get_text_features = (
@@ -73,9 +74,8 @@ def gen_images(args, guided_pipeline, features):
     )
 
     # Generate
-    prompt = [
-        "a photorealistic image"
-    ] * batch_size  # "a traffic scene, hyperrealistic, unreal engine"
+    if len(prompt) == 1:
+        prompt = prompt * batch_size
     clip_prompt = ""
     num_samples = 1
     num_inference_steps = args.num_inference_steps
@@ -152,20 +152,32 @@ def main(args):
     # Check if image already exists
     if not args.regenerate:  # if we don't want to regenerate, remove indexes that already exist
         existing_files = os.listdir(args.output_dir)
-        indexes = [idx for idx in indexes if not f"{idx}_0.png" in existing_files]
+        indexes = [idx for idx in indexes if f"{idx}_0.png" not in existing_files]
 
     # Load features
     features = load_clip_features(args)
     # Load pipeline
     guided_pipeline = load_pipeline(args)
 
+    if len(args.caption_path) > 0:
+        captions = torch.load(args.caption_path)
+    else:
+        captions = None
+
     # batch index and loop with tqdm
     for i in tqdm(range(0, len(indexes), args.batch_size), desc="Generating images"):
         idx = indexes[i : i + args.batch_size]
         # Get features
         batch_features = features[idx]
+        # Get captions
+        if captions is not None:
+            # captions is a dict of strings
+            batch_captions = [captions[i] for i in idx]
+        else:
+            batch_captions = ["a photorealistic image" for _ in idx]
+
         # Generate images
-        images = gen_images(args, guided_pipeline, batch_features)
+        images = gen_images(args, guided_pipeline, batch_features, prompt=batch_captions)
         # Save images
         save_images(args, images, idx)
 
@@ -198,6 +210,7 @@ def parse_args():
     parser.add_argument("--every_n", type=int, default=1)
     parser.add_argument("--start_idx", type=int, default=0)
     parser.add_argument("--regenerate", type=bool, default=False)
+    parser.add_argument("--caption-path", type=str, default="")
     args = parser.parse_args()
     return args
 
