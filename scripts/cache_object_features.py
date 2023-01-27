@@ -16,6 +16,7 @@ from lidarclip.model.sst import LidarEncoderSST
 from train import LidarClip
 
 VOXEL_SIZE = 0.5
+DISTANCE = 40  # Discard objects beyond this distance
 
 DEFAULT_DATA_PATHS = {
     "once": "/proj/nlp4adas/datasets/once",
@@ -59,6 +60,8 @@ def main(args):
             point_clouds = [pc.to("cuda") for pc in point_clouds]
             lidar_features, _ = model.lidar_encoder(point_clouds, no_pooling=True)
             for name, box3d in zip(annos["names"], annos["boxes_3d"]):
+                if torch.norm(box3d[:2]) > DISTANCE:
+                    continue
                 obj_feat = _extract_obj_feat(box3d, lidar_features[0])
                 obj_feats[name].append(obj_feat)
 
