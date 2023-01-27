@@ -39,7 +39,8 @@ def get_device(device_id: int) -> D:
 CUDA = get_device
 
 current_directory = os.getcwd()
-save_path = os.path.join(os.path.dirname(current_directory), "pretrained_models")
+save_path = "/workspace/lidar-clippin/pretrained_models"
+# os.path.join(os.path.dirname(current_directory), "pretrained_models")
 os.makedirs(save_path, exist_ok=True)
 base_model_path = os.path.join(save_path, "model_weights.pt")
 
@@ -269,7 +270,7 @@ feature_root = try_paths(
     "../features", "/proj/nlp4adas/features", "/mimer/NOBACKUP/groups/clippin/features"
 )
 lidar_feats = torch.cat(
-    [torch.load(f"{feature_root}/once_vit-b-32_{split}_lidar.pt") for split in SPLITS], dim=0
+    [torch.load(f"{feature_root}/once_vit-b-32_{split}_img.pt") for split in SPLITS], dim=0
 ).to(device, dtype=torch.float32)
 
 
@@ -279,6 +280,7 @@ SAMPLE_IDXS = [int(img.split(".")[0].split("_")[0]) for img in generated_imgs]
 
 USE_BEAM_SEARCH = False  # True
 # Perform captioning!
+print("Start captioning")
 outs = dict()
 with torch.no_grad():
     for sample_idx in SAMPLE_IDXS:
@@ -291,4 +293,6 @@ with torch.no_grad():
         outs[sample_idx] = generated_text_prefix
         print(f'{sample_idx}: {" " * (8 - len(str(sample_idx)))} "{generated_text_prefix}"')
 
-torch.save(outs, os.path.join(feature_root, "generated_captions.pt"))
+print("Finished captioning")
+out_folder = "/mimer/NOBACKUP/groups/clippin/gen_images"
+torch.save(outs, os.path.join(out_folder, "generated_captions_img.pt"))
