@@ -83,8 +83,17 @@ def main(args):
 
     if len(args.pre_computed_feat_path) > 0:
         print("Loading precomputed features")
-        pointclip_zs.feat_store = torch.load(args.pre_computed_feat_path)
-        pointclip_zs.label_store = torch.load(args.pre_computed_feat_path.replace("feat", "label"))
+        computed_feats = torch.load(args.pre_computed_feat_path)
+        if type(computed_feats) == list:
+            computed_feats = torch.cat(computed_feats, dim=0)
+
+        pointclip_zs.feat_store = computed_feats
+
+        labels = torch.load(args.pre_computed_feat_path.replace("feat", "label"))
+        if type(labels) == list:
+            labels = torch.tensor(labels)
+
+        pointclip_zs.label_store = labels
 
     counter = 0
     mask = []
@@ -140,6 +149,7 @@ def main(args):
         logit_scale = pointclip_zs.logit_scale.exp()
 
         image_feat = pointclip_zs.feat_store[mask]
+        image_feat.to(text_feat.device)
         logits = logit_scale * image_feat @ text_feat.t() * 1.0
         preds = logits.argmax(dim=-1).cpu().numpy()
 
