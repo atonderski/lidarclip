@@ -75,6 +75,10 @@ def main(args):
             images, point_clouds = batch[:2]
             for pc in point_clouds:
                 pc = pc.to(device)
+                mask = (pc[:, 0] < 40) & (pc[:, 1] < 20) & (pc[:, 1] > 20)
+                pc = pc[~mask]
+
+                assert len(pc) > 0, "all points discarded"
 
                 normalizing_factor = pc.max() / 2
                 # normalize pc to [-1,1]
