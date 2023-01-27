@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument("--split", type=str, default="val", help="Dataset split")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     parser.add_argument("--dataset-name", type=str, default="once", help="Dataset name")
+    parser.add_argument("--use_anno_loader", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -75,7 +76,7 @@ def main(args):
             for pc in point_clouds:
                 pc = pc.to(device)
 
-                normalizing_factor = max(pc) / 2
+                normalizing_factor = pc.max() / 2
                 # normalize pc to [-1,1]
                 pc[:, :3] = pc[:, :3] / normalizing_factor
 
