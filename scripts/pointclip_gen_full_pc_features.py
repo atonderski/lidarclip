@@ -93,7 +93,7 @@ def main(args):
     print("Finished processing all samples")
 
     filename = f"features_fullPC_{args.clip_model}.pt"
-    torch.save(pointclip_zs.feat_store, os.path.join(args.output_dir, filename))
+    torch.save(torch.cat(pointclip_zs.feat_store, dim=0), os.path.join(args.output_dir, filename))
 
 
 if __name__ == "__main__":
