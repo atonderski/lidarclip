@@ -111,8 +111,10 @@ def main(args):
     print("Processed {} samples".format(counter))
     print_stats(labels, preds)
 
-    torch.save(pointclip_zs.label_store, os.path.join(args.output_dir, "label_store.pt"))
-    torch.save(pointclip_zs.feat_store, os.path.join(args.output_dir, "feat_store.pt"))
+    label_filename = f"label_store_{args.clip_model.replace('/', '')}.pt"
+    feat_filename = f"label_store_{args.clip_model.replace('/', '')}.pt"
+    torch.save(pointclip_zs.label_store, os.path.join(args.output_dir, label_filename))
+    torch.save(pointclip_zs.feat_store, os.path.join(args.output_dir, feat_filename))
 
 
 if __name__ == "__main__":
