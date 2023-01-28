@@ -304,6 +304,113 @@ class OnceImageLidarDataset(Dataset):
         cam_name = self._idx_to_cam[cam_idx]
         return sequence_id, frame_id, cam_idx, seq_idx, cam_name
 
+    def get_index_without_lidar_proj(self, index):
+        """Load image and point cloud.
+
+        The point cloud undergoes the following:
+        - all points outside the image are removed
+        - coordinate system is converted to KITTI-style x-forward, y-left, z-up
+
+        """
+        sequence_id, frame_id, cam_idx, seq_idx, cam_name = self.map_index(index)
+        try:
+            image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
+        except FileNotFoundError:
+            print(f"Failed to load image {sequence_id}/{frame_id}/{cam_name}")
+            # return self.__getitem__(np.random.randint(0, len(self._frames)))
+        # image = to_pil_image(image)
+        og_size = image.size
+        image = self._img_transform(image)
+        # if image is tensor or numpy array, check shape, otherwise check size
+        if isinstance(image, torch.Tensor):
+            new_size = image.shape[1:]
+        elif isinstance(image, np.ndarray):
+            new_size = image.shape[1:]
+        else:
+            new_size = image.size
+        try:
+            point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
+            some_range = 100
+            mask = (
+                (point_cloud[:, 0] > -some_range)
+                & (point_cloud[:, 0] < some_range)
+                & (point_cloud[:, 1] > -some_range)
+                & (point_cloud[:, 1] < some_range)
+                & (point_cloud[:, 2] > -some_range)
+                & (point_cloud[:, 2] < some_range)
+            )
+            point_cloud = point_cloud[mask]
+        except FileNotFoundError:
+            print(f"Failed to load point cloud {sequence_id}/{frame_id}/{cam_name}")
+
+        calib = {
+            "cam_to_velo": self._cam_to_velos[seq_idx, cam_idx],
+            "cam_intrinsic": self._cam_intrinsics[seq_idx, cam_idx],
+            "distortion": self._cam_distortions[seq_idx, cam_idx],
+        }
+
+        # point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
+        # point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib)
+        point_cloud = self._remove_points_outside_cam_keep_lidar_frame(
+            point_cloud, calib, og_size, new_size
+        )
+
+        # convert to KITTI-style coordinate system
+        # from x - left, y - back, z - up to x - forward, y - left, z - up
+        # point_cloud = point_cloud[:, [1, 0, 2, 3]]
+        # point_cloud[:, 0] = -point_cloud[:, 0]
+
+        return image, point_cloud
+
+    @staticmethod
+    def _remove_points_outside_cam_keep_lidar_frame(points_lidar, calibration, og_size, new_size):
+
+        # project to cam coords
+        cam_2_lidar = calibration["cam_to_velo"]
+
+        points_cam = torch.hstack(
+            [
+                points_lidar[:, :3],
+                torch.ones((points_lidar.shape[0], 1), dtype=torch.float32),
+            ]
+        )
+
+        points_cam = torch.matmul(points_cam, torch.linalg.inv(cam_2_lidar).T)
+
+        # discard points behind camera
+        mask = points_cam[:, 2] > 0
+        points_cam = points_cam[mask]
+        points_lidar = points_lidar[mask]
+
+        # project to image coords
+        w_og, h_og = og_size
+        new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
+            calibration["cam_intrinsic"].numpy(),
+            calibration["distortion"].numpy(),
+            (w_og, h_og),
+            alpha=0.0,
+        )
+
+        points_img = torch.matmul(points_cam[:, :3], torch.as_tensor(new_cam_intrinsic).T)
+        points_img = points_img / points_img[:, [2]]
+        # w_og // 2 = middle of image
+        # h_og // 2 = half new image width due to wide aspect ratio 16:9
+        # (that is cropped to square 9:9)
+        left_border = w_og // 2 - h_og // 2
+        right_border = w_og // 2 + h_og // 2
+        mask = (
+            (left_border < points_img[:, 0])
+            & (points_img[:, 0] < right_border)
+            & (0 < points_img[:, 1])
+            & (points_img[:, 1] < h_og)
+        )
+
+        points_lidar = points_lidar[mask]
+        points_img = points_img[mask]
+        points_cam = points_cam[mask]
+        points_img = torch.cat([points_img[:, :2], points_cam[:, 2:3], points_lidar[:, 3:]], dim=-1)
+        return points_img
+
     @staticmethod
     def _transform_lidar_and_remove_points_outside_cam_torch(
         points_lidar, calibration, og_size, new_size, remove_points_outside_cam=True
