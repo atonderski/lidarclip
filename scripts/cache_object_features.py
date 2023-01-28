@@ -1,25 +1,23 @@
 import argparse
-from collections import defaultdict
 import os
+from collections import defaultdict
 
+import clip
+import torch
+from einops import rearrange
 from mmcv.runner import load_checkpoint
+from skimage.draw import polygon2mask
 from tqdm import tqdm
 
-import torch
-from skimage.draw import polygon2mask
-import clip
-
 from lidarclip.anno_loader import build_anno_loader
-
 from lidarclip.model.sst import LidarEncoderSST
-
 from train import LidarClip
 
 VOXEL_SIZE = 0.5
 DISTANCE = 40  # Discard objects beyond this distance
 
 DEFAULT_DATA_PATHS = {
-    "once": "/proj/nlp4adas/datasets/once",
+    "once": "/once",
     "nuscenes": "/proj/berzelius-2021-92/data/nuscenes",
 }
 
@@ -37,7 +35,9 @@ def load_model(args):
 
 def main(args):
     assert torch.cuda.is_available()
+    print("Loading model...")
     model, clip_preprocess = load_model(args)
+    print("Setting up dataloader...")
     build_loader = build_anno_loader
     loader = build_loader(
         args.data_path,
@@ -53,27 +53,31 @@ def main(args):
         print("Found existing file, skipping")
         return
 
+    print("Starting feature generation...")
     obj_feats = defaultdict(list)
     with torch.no_grad():
-        for batch in tqdm(loader):
+        for batch in tqdm(loader, desc="Generating features"):
             point_clouds, annos = batch[1:3]
             point_clouds = [pc.to("cuda") for pc in point_clouds]
             lidar_features, _ = model.lidar_encoder(point_clouds, no_pooling=True)
-            for name, box3d in zip(annos["names"], annos["boxes_3d"]):
-                if torch.norm(box3d[:2]) > DISTANCE:
-                    continue
-                obj_feat = _extract_obj_feat(box3d, lidar_features[0])
-                obj_feats[name].append(obj_feat)
+            bev_features = rearrange(lidar_features, "(h w) n c -> n h w c", h=80, w=80)
+            for i, bev_feature in enumerate(bev_features):
+                for name, box3d in zip(annos[i]["names"], annos[i]["boxes_3d"]):
+                    if box3d[:2].norm() > DISTANCE:
+                        continue
+                    obj_feat = _extract_obj_feat(box3d, bev_feature)
+                    obj_feats[name].append(obj_feat)
 
     torch.save(obj_feats, obj_feats_path)
 
 
-def _extract_obj_feat(box3d, lidar_features):
+def _extract_obj_feat(box3d, bev_feature):
+    x_dim, y_dim, _ = bev_feature.shape
     # Convert box to feature grid space
     box_center = box3d[:2] / VOXEL_SIZE
     # Compensate y coordinate for the fact that the lidar features are
     # centered around the ego vehicle in the y direction (x starts from 0)
-    box_center[1] += lidar_features.shape[-1] / 2
+    box_center[1] += y_dim / 2
     box_size = box3d[3:5] / VOXEL_SIZE
     box_rotation = torch.Tensor([box3d[6]])
 
@@ -96,9 +100,9 @@ def _extract_obj_feat(box3d, lidar_features):
     # Rotate the corner points of the bounding box
     box_points = torch.matmul(box_points, rotation_matrix) + box_center
     # Create a mask of the pixels that are within the bounding box
-    mask = polygon2mask(lidar_features[0].shape, box_points.cpu().numpy())
+    mask = polygon2mask((x_dim, y_dim), box_points.cpu().numpy())
     # Pool the features within the bounding box
-    pooled_features = lidar_features[:, mask].mean(dim=(-1))
+    pooled_features = bev_feature[mask].mean(dim=(0))
     return pooled_features
 
 
@@ -123,14 +127,14 @@ if __name__ == "__main__":
     args = parse_args()
     main(args)
     # VOXEL_SIZE = 1
-    # test_feat = torch.ones((3, 100, 100))
+    # test_feat = torch.ones((100, 100, 3))
     # # Draw a diagonal narrow box with value 2 from 24,78 to 36,90
     # for i in range(-5, 5):
-    #     test_feat[:, 30 + i, 80 + i] = 2
-    # test_box = torch.Tensor([30, 30, 123012, 10, 1, 1239123, torch.pi / 4])
+    #     test_feat[30 + i, 80 + i, :] = 2
+    # test_box = torch.Tensor([30, 30, 123012, 10, 1, 1239123, 3 * torch.pi / 4])
     # feat = _extract_obj_feat(test_box, test_feat)
     # print(feat)
     # import matplotlib.pyplot as plt
 
-    # plt.imshow(test_feat[0])
+    # plt.imshow(test_feat[..., 0])
     # plt.show()

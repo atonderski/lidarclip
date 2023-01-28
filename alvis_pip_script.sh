@@ -22,7 +22,7 @@ singularity exec --nv \
   --pwd /workspace/lidar-clippin/ \
   --env PYTHONPATH=/workspace/lidar-clippin/ \
   /mimer/NOBACKUP/groups/clippin/containers/lidar-clippin.sif \
-  $@
+  ./pip_install_then_run.sh $@
 
 #
 #EOF

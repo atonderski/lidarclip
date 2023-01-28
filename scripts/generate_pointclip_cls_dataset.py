@@ -19,7 +19,7 @@ def visulize_object(annos, obj_idx):
     import numpy as np
 
     points_in_box = annos["points_per_obj"][obj_idx]
-    length, w, h = annos["boxes_3d"][obj_idx][3:6]
+    length, w, h = annos["boxes_3d"][obj_idx][3:6].numpy().tolist()
 
     # Top-view, facing forward
     plt.figure()

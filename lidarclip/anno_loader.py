@@ -246,7 +246,7 @@ class OnceFullDataset(OnceImageLidarDataset):
             transformed_boxes = torch.cat(
                 [transformed_boxes_center_coord[:, :3], boxes_3d[:, 3:-1], rots], dim=1
             )
-            annos["boxes_3d"] = transformed_boxes.tolist()
+            annos["boxes_3d"] = transformed_boxes
             # x,y,z,l,w,h,rz in kitti format
             # (x,y,z is the center of the box) x is forward, y is left, z is up
 

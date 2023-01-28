@@ -107,7 +107,7 @@ def main(args):
             label = CLASSES.index(anno["names"][j])
             pc = anno["points_per_obj"][j]
 
-            x, y, z, length, w, h, ry = anno["boxes_3d"][j]
+            x, y, z, length, w, h, ry = anno["boxes_3d"][j].numpy().tolist()
 
             if len(args.pre_computed_feat_path) > 0:
                 keep = math.sqrt(x**2 + y**2) < DISTANCE_THRESH
