@@ -148,7 +148,7 @@ def main(args):
     # with open(args.indexes_path, "r") as f:
     #    indexes = [int(x) for x in f.readlines()]
     generated_imgs = os.listdir("/mimer/NOBACKUP/groups/clippin/gen_images/once_val_lidar_selected")
-    indexes = [int(img.split(".")[0].split("_")[0]) for img in generated_imgs]
+    indexes = sorted([int(img.split(".")[0].split("_")[0]) for img in generated_imgs])
     # Discard indexes
     indexes = indexes[args.start_idx :: args.every_n]
     # Check if image already exists
