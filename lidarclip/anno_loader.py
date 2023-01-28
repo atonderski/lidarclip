@@ -407,12 +407,10 @@ def build_anno_loader(
 
 
 def demo_once():
-    import matplotlib.pyplot as plt
-    from einops import rearrange
-
-    import torch
-
     import clip
+    import matplotlib.pyplot as plt
+    import torch
+    from einops import rearrange
 
     _, clip_preprocess = clip.load("ViT-B/32")
 

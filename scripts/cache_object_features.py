@@ -56,7 +56,9 @@ def main(args):
     print("Starting feature generation...")
     obj_feats = defaultdict(list)
     with torch.no_grad():
-        for batch in tqdm(loader, desc="Generating features"):
+        for batch_i, batch in tqdm(
+            enumerate(loader), desc="Generating features", total=len(loader)
+        ):
             point_clouds, annos = batch[1:3]
             point_clouds = [pc.to("cuda") for pc in point_clouds]
             lidar_features, _ = model.lidar_encoder(point_clouds, no_pooling=True)
@@ -66,8 +68,9 @@ def main(args):
                     if box3d[:2].norm() > DISTANCE:
                         continue
                     obj_feat = _extract_obj_feat(box3d, bev_feature)
-                    obj_feats[name].append(obj_feat)
-
+                    obj_feats[name].append(obj_feat.clone())
+            if batch_i == 0:
+                torch.save(bev_features[0:1].clone(), f"{args.prefix}_lidar_objs_bev_debug.pt")
     torch.save(obj_feats, obj_feats_path)
 
 
