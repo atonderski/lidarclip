@@ -1,5 +1,5 @@
 import argparse
-import os
+import os.path as osp
 from collections import defaultdict
 
 import clip
@@ -49,7 +49,7 @@ def main(args):
     )
 
     obj_feats_path = f"{args.prefix}_lidar_objs.pt"
-    if os.path.exists(obj_feats_path):
+    if osp.exists(obj_feats_path):
         print("Found existing file, skipping")
         return
 
@@ -70,19 +70,21 @@ def main(args):
                     obj_feat = _extract_obj_feat(box3d, bev_feature)
                     obj_feats[name].append(obj_feat.clone())
             if batch_i == 0:
-                torch.save(bev_features[0:1].clone(), f"{args.prefix}_lidar_objs_bev_debug.pt")
+                debug_path = f"{args.prefix}_lidar_objs_bev_debug.pt"
+                if not osp.exists(debug_path):
+                    torch.save(bev_features[0:1].clone(), debug_path)
     torch.save(obj_feats, obj_feats_path)
 
 
 def _extract_obj_feat(box3d, bev_feature):
-    x_dim, y_dim, _ = bev_feature.shape
+    y_dim, x_dim, _ = bev_feature.shape
     # Convert box to feature grid space
     box_center = box3d[:2] / VOXEL_SIZE
     # Compensate y coordinate for the fact that the lidar features are
     # centered around the ego vehicle in the y direction (x starts from 0)
     box_center[1] += y_dim / 2
     box_size = box3d[3:5] / VOXEL_SIZE
-    box_rotation = torch.Tensor([box3d[6]])
+    box_rotation = -torch.Tensor([box3d[6]])
 
     # Create the corner points of the bounding box
     box_points = torch.tensor(
@@ -103,7 +105,8 @@ def _extract_obj_feat(box3d, bev_feature):
     # Rotate the corner points of the bounding box
     box_points = torch.matmul(box_points, rotation_matrix) + box_center
     # Create a mask of the pixels that are within the bounding box
-    mask = polygon2mask((x_dim, y_dim), box_points.cpu().numpy())
+    # Flip x and y (since y is height and x is width)
+    mask = polygon2mask((x_dim, y_dim), box_points.cpu().numpy()[:, ::-1])
     # Pool the features within the bounding box
     pooled_features = bev_feature[mask].mean(dim=(0))
     return pooled_features
@@ -140,4 +143,5 @@ if __name__ == "__main__":
     # import matplotlib.pyplot as plt
 
     # plt.imshow(test_feat[..., 0])
+    # plt.show()
     # plt.show()
