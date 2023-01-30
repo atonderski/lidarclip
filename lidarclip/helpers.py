@@ -1,11 +1,9 @@
 import itertools
 import os
 
-import numpy as np
-
-import torch
-
 import clip
+import numpy as np
+import torch
 
 
 def logit_img_txt(img_feat, txt_feat, clip_model):
@@ -26,7 +24,7 @@ def get_topk(prompts, k, img_feats, lidar_feats, joint_feats, clip_model, device
         text_features = text_features.sum(axis=0, keepdim=True)
     logits_per_text_i, _ = logit_img_txt(img_feats, text_features, clip_model)
     logits_per_text_l, _ = logit_img_txt(lidar_feats, text_features, clip_model)
-    # Note: Here we use feature averaging, one could instead use score averaging or a re-ranking approach
+    # Note: Here we use feature averaging, one could instead use score averaging or re-ranking
     logits_per_text_j, _ = logit_img_txt(joint_feats, text_features, clip_model)
 
     _, img_idxs = torch.topk(logits_per_text_i[0, :], k)
@@ -34,6 +32,15 @@ def get_topk(prompts, k, img_feats, lidar_feats, joint_feats, clip_model, device
     _, joint_idxs = torch.topk(logits_per_text_j[0, :], k)
 
     return img_idxs.cpu().numpy(), pc_idxs.cpu().numpy(), joint_idxs.cpu().numpy()
+
+
+def get_topk_single(prompts, k, feats, clip_model, device):
+    with torch.no_grad():
+        text = clip.tokenize(prompts).to(device)
+        text_features = clip_model.encode_text(text).sum(axis=0, keepdim=True)
+        logits_per_text, _ = logit_img_txt(feats, text_features, clip_model)
+        _, idxs = torch.topk(logits_per_text[0, :], k)
+    return idxs.cpu().numpy()
 
 
 def get_topk_separate_prompts(

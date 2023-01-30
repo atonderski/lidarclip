@@ -8,17 +8,15 @@ from typing import List, Tuple
 
 import cv2
 import numpy as np
+import torch
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.data_classes import LidarPointCloud
 from nuscenes.utils.geometry_utils import view_points
 from nuscenes.utils.splits import create_splits_scenes
 from PIL import Image
 from pyquaternion import Quaternion
-
-import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
-
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 SPLITS = {
@@ -260,11 +258,11 @@ class OnceImageLidarDataset(Dataset):
         image = self._img_transform(image)
         # if image is tensor or numpy array, check shape, otherwise check size
         if isinstance(image, torch.Tensor):
-            new_size = image.shape[1:]
+            image.shape[1:]
         elif isinstance(image, np.ndarray):
-            new_size = image.shape[1:]
+            image.shape[1:]
         else:
-            new_size = image.size
+            image.size
         try:
             point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
             some_range = 100
@@ -289,7 +287,7 @@ class OnceImageLidarDataset(Dataset):
         # point_cloud = self._transform_lidar_to_cam(point_cloud, calib)
         # point_cloud = self._remove_points_outside_cam(point_cloud, og_size, new_size, calib)
         point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
-            point_cloud, calib, og_size, new_size
+            point_cloud, calib, og_size
         )
 
         return image, point_cloud
@@ -413,7 +411,7 @@ class OnceImageLidarDataset(Dataset):
 
     @staticmethod
     def _transform_lidar_and_remove_points_outside_cam_torch(
-        points_lidar, calibration, og_size, new_size, remove_points_outside_cam=True
+        points_lidar, calibration, og_size, remove_points_outside_cam=True
     ):
 
         # project to cam coords
@@ -428,45 +426,38 @@ class OnceImageLidarDataset(Dataset):
 
         points_cam = torch.matmul(points_cam, torch.linalg.inv(cam_2_lidar).T)
 
-        # discard points behind camera
-        mask = (
-            points_cam[:, 2] > 0
-            if remove_points_outside_cam
-            else torch.ones_like(points_cam[:, 2], dtype=torch.bool)
-        )
-        points_cam = points_cam[mask]
-        points_lidar = points_lidar[mask]
+        if remove_points_outside_cam:
+            # discard points behind camera
+            mask = points_cam[:, 2] > 0
+            points_cam = points_cam[mask]
+            points_lidar = points_lidar[mask]
 
-        # project to image coords
-        w_og, h_og = og_size
-        new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
-            calibration["cam_intrinsic"].numpy(),
-            calibration["distortion"].numpy(),
-            (w_og, h_og),
-            alpha=0.0,
-        )
-
-        points_img = torch.matmul(points_cam[:, :3], torch.as_tensor(new_cam_intrinsic).T)
-        points_img = points_img / points_img[:, [2]]
-        # w_og // 2 = middle of image
-        # h_og // 2 = half new image width due to wide aspect ratio 16:9
-        # (that is cropped to square 9:9)
-        left_border = w_og // 2 - h_og // 2
-        right_border = w_og // 2 + h_og // 2
-        mask = (
-            (
+            # project to image coords
+            w_og, h_og = og_size
+            new_cam_intrinsic, _ = cv2.getOptimalNewCameraMatrix(
+                calibration["cam_intrinsic"].numpy(),
+                calibration["distortion"].numpy(),
+                (w_og, h_og),
+                alpha=0.0,
+            )
+            points_img = torch.matmul(points_cam[:, :3], torch.as_tensor(new_cam_intrinsic).T)
+            points_img = points_img / points_img[:, [2]]
+            # w_og // 2 = middle of image
+            # h_og // 2 = half new image width due to wide aspect ratio 16:9
+            # (that is cropped to square 9:9)
+            left_border = w_og // 2 - h_og // 2
+            right_border = w_og // 2 + h_og // 2
+            mask = (
                 (left_border < points_img[:, 0])
                 & (points_img[:, 0] < right_border)
                 & (0 < points_img[:, 1])
                 & (points_img[:, 1] < h_og)
             )
-            if remove_points_outside_cam
-            else torch.ones_like(points_img[:, 0], dtype=torch.bool)
-        )
+            points_cam = points_cam[mask]
+            points_lidar = points_lidar[mask]
 
         # add reflectance
-        points_cam = points_cam[mask]
-        points_cam[:, 3] = points_lidar[mask, 3]
+        points_cam[:, 3] = points_lidar[:, 3]
         # shift from cam coords to KITTI style (x-forward, y-left, z-up)
         points_cam = points_cam[:, (2, 0, 1, 3)]
         points_cam[:, 1] = -points_cam[:, 1]
@@ -474,9 +465,7 @@ class OnceImageLidarDataset(Dataset):
         return points_cam.contiguous()
 
     @staticmethod
-    def _transform_lidar_and_remove_points_outside_cam(
-        points_lidar, calibration, og_size, new_size
-    ):
+    def _transform_lidar_and_remove_points_outside_cam(points_lidar, calibration, og_size):
 
         # project to cam coords
         cam_2_lidar = calibration["cam_to_velo"]
@@ -669,12 +658,10 @@ def build_loader(
 
 
 def demo_dataset():
-    import matplotlib.pyplot as plt
-    from einops import rearrange
-
-    import torch
-
     import clip
+    import matplotlib.pyplot as plt
+    import torch
+    from einops import rearrange
 
     _, clip_preprocess = clip.load("ViT-B/32")
 

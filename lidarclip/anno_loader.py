@@ -3,7 +3,6 @@ import os
 from copy import deepcopy
 
 import numpy as np
-
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
@@ -14,7 +13,6 @@ from lidarclip.loader import (
     NuscenesImageLidarDataset,
     OnceImageLidarDataset,
 )
-
 
 # ONCE settings
 CENTERCROP_BOX = [450, 0, 1470, 1020]
@@ -122,7 +120,7 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
             "names": [NUSCENES_CLASS_MAP[box.name] for box in boxes],
             "boxes_2d": [None for _ in boxes],
             "boxes_3d": [
-                np.array((*box.center, *box.wlh, box.orientation.radians)) for box in boxes
+                torch.Tensor((*box.center, *box.wlh, box.orientation.radians)) for box in boxes
             ],
         }
         meta = None  # TODO: implement nuscenes metadata
@@ -213,10 +211,9 @@ class OnceFullDataset(OnceImageLidarDataset):
             image = self._load_image(self._data_root, sequence_id, frame_id, cam_name)
             og_size = image.size
             image = self._img_transform(image)
-            new_size = image.shape[1:]
             point_cloud = self._load_point_cloud(self._data_root, sequence_id, frame_id)
             point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
-                point_cloud, calib, og_size, new_size
+                point_cloud, calib, og_size
             )
 
         if self._skip_anno:
@@ -228,7 +225,7 @@ class OnceFullDataset(OnceImageLidarDataset):
             boxes_3d = torch.tensor(annos["boxes_3d"]).reshape(-1, 7)
             transformed_boxes_center_coord = (
                 self._transform_lidar_and_remove_points_outside_cam_torch(
-                    boxes_3d[:, :4], calib, og_size, new_size, remove_points_outside_cam=False
+                    boxes_3d[:, :4], calib, og_size=None, remove_points_outside_cam=False
                 )
             )
             # Rotation matrix to go from camera to lidar
