@@ -20,7 +20,7 @@ from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
-SPLITS = {
+ONCE_SPLITS = {
     "train": ("train", "raw_small", "raw_medium", "raw_large"),
     "train-only": ("train",),
     "val": ("val",),
@@ -211,10 +211,10 @@ class OnceImageLidarDataset(Dataset):
         gc.collect()
 
     def _setup(self, split: str) -> torch.Tensor:
-        assert split in SPLITS, f"Unknown split: {split}, must be one of {SPLITS.keys()}"
+        assert split in ONCE_SPLITS, f"Unknown split: {split}, must be one of {ONCE_SPLITS.keys()}"
 
         seq_list = set()
-        for attr in SPLITS[split]:
+        for attr in ONCE_SPLITS[split]:
             seq_list_path = os.path.join(self._data_root, "..", "ImageSets", f"{attr}.txt")
             if not os.path.exists(seq_list_path):
                 continue
@@ -661,27 +661,36 @@ def _collate_fn(batch):
 
 
 def build_loader(
-    datadir,
-    clip_preprocess,
+    datadir="",  # legacy flag, deprecate
+    clip_preprocess=None,
     batch_size=32,
     num_workers=16,
-    split="train",
     shuffle=False,
     dataset_name="once",
-    nuscenes_datadir=None,
+    split="",  # legacy flag, deprecate
+    once_datadir="",
+    once_split="train",
+    nuscenes_datadir="",
     nuscenes_split="train",
     nuscenes_oversampling=-1,
 ):
     if dataset_name == "once":
-        dataset = OnceImageLidarDataset(datadir, img_transform=clip_preprocess, split=split)
+        dataset = OnceImageLidarDataset(
+            datadir or once_datadir, img_transform=clip_preprocess, split=split or once_split
+        )
     elif dataset_name == "nuscenes":
-        dataset = NuscenesImageLidarDataset(datadir, img_transform=clip_preprocess, split=split)
+        dataset = NuscenesImageLidarDataset(
+            datadir or nuscenes_datadir,
+            img_transform=clip_preprocess,
+            split=split or nuscenes_split,
+        )
     elif dataset_name == "joint":
+        assert not datadir and not split, "Cannot use legacy flags with joint dataset"
         dataset = JointImageLidarDataset(
-            datadir,
+            once_datadir,
             nuscenes_datadir,
             img_transform=clip_preprocess,
-            once_split=split,
+            once_split=once_split,
             nuscenes_split=nuscenes_split,
             nuscenes_oversampling=nuscenes_oversampling,
         )
@@ -707,38 +716,42 @@ def demo_dataset():
 
     _, clip_preprocess = clip.load("ViT-B/32")
 
-    nuscenes_datadir = "/home/s0001396/Documents/phd/datasets/nuscenes"
-    datadir = "/home/s0001396/Documents/phd/datasets/once"
+    nuscenes_datadir = "/Users/s0000960/data/nuscenes"
+    once_datadir = "/Users/s0000960/data/once"
     loader = build_loader(
-        datadir,
-        clip_preprocess,
+        clip_preprocess=clip_preprocess,
         num_workers=0,
         batch_size=2,
-        split="val",
         dataset_name="joint",
+        once_split="val",
+        once_datadir=once_datadir,
         nuscenes_datadir=nuscenes_datadir,
         nuscenes_split="mini",
         shuffle=True,
     )
     iter_loader = iter(loader)
-    for images, lidars in iter_loader:
+    for i, (images, lidars) in enumerate(iter_loader):
 
         means = torch.tensor([0.48145466, 0.4578275, 0.40821073], device="cpu")
         stds = torch.tensor([0.26862954, 0.26130258, 0.27577711], device="cpu")
         image = rearrange(images[0], "c h w -> h w c") * stds + means
-
         lidar = lidars[0]
-        lidar = lidar[torch.randperm(lidar.shape[0])[:8192]]
+        mindist = np.linalg.norm(lidar[:, :3], axis=-1).min()
+        if lidar.shape[0] > 1000 and mindist < 10:
+            print(f"skipping, {lidar.shape[0]} points, minimum distance is {mindist}")
+            continue
+        print(f"sample {i} with {lidar.shape[0]} points, minimum distance is {mindist}")
+        # lidar = lidar[torch.randperm(lidar.shape[0])[:8192]]
         plt.figure()
         plt.imshow(image)
         plt.figure()
         # for visualization convert to x-right, y-forward
         plt.scatter(-lidar[:, 1], lidar[:, 0], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
         plt.axis("equal")
-        plt.xlim(-10, 10)
-        plt.ylim(0, 40)
-        plt.figure()
-        plt.hist(lidar[:, 3], bins=1000, density=True)
+        # plt.xlim(-10, 10)
+        # plt.ylim(0, 40)
+        # plt.figure()
+        # plt.hist(lidar[:, 3], bins=1000, density=True)
         plt.show()
 
 

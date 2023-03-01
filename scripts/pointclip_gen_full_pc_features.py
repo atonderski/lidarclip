@@ -1,16 +1,13 @@
 import argparse
 import os
 
-from pointclip_utils import PointCLIP_ZS
-
-import torch
-
 import clip
-
-from lidarclip.anno_loader import CLASSES
-from lidarclip.anno_loader import build_anno_loader
-from lidarclip.loader import build_loader as build_dataonly_loader
+import torch
+from pointclip_utils import PointCLIP_ZS
 from tqdm import tqdm
+
+from lidarclip.anno_loader import CLASSES, build_anno_loader
+from lidarclip.loader import build_loader as build_dataonly_loader
 
 
 def parse_args():

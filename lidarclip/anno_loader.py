@@ -362,31 +362,35 @@ def _collate_fn(batch):
 
 
 def build_anno_loader(
-    datadir,
-    clip_preprocess,
+    datadir="",  # legacy flag
+    clip_preprocess=None,
     batch_size=32,
     num_workers=16,
-    split="val",
     shuffle=False,
     skip_data=False,
     skip_anno=False,
     return_points_per_obj=False,
+    split="",  # legacy flag
+    once_split="val",
+    nuscenes_split="val",
+    once_datadir="/once",
+    nuscenes_datadir="/nuscenes",
     dataset_name="once",
 ):
     if dataset_name == "once":
         dataset = OnceFullDataset(
-            datadir,
+            datadir or once_datadir,
             img_transform=clip_preprocess,
-            split=split,
+            split=split or once_split,
             skip_data=skip_data,
             skip_anno=skip_anno,
             return_points_per_obj=return_points_per_obj,
         )
     elif dataset_name == "nuscenes":
         dataset = NuscenesFullDataset(
-            datadir,
+            datadir or nuscenes_datadir,
             img_transform=clip_preprocess,
-            split=split,
+            split=split or nuscenes_split,
             skip_data=skip_data,
             skip_anno=skip_anno,
         )
