@@ -17,6 +17,7 @@ from PIL import Image
 from pyquaternion import Quaternion
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
+from tqdm import tqdm
 
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 SPLITS = {
@@ -63,7 +64,7 @@ class NuscenesImageLidarDataset(Dataset):
         self.min_dist = min_dist
         gc.collect()
 
-    def _setup(self, split: str) -> List[Tuple[str, str, str]]:
+    def _get_ok_scene_tokens(self, split: str) -> List[str]:
         splits = deepcopy(create_splits_scenes())
         if split == "train-only":
             split = "train"
@@ -73,32 +74,63 @@ class NuscenesImageLidarDataset(Dataset):
         elif split == "mini":
             split = "mini_train"
             splits["mini_train"].extend(splits["mini_val"])
-
         ok_scenes = splits[split]
+        return [scene["token"] for scene in self._nusc.scene if scene["name"] in ok_scenes]
 
-        ok_scene_tokens = [
-            scene["token"] for scene in self._nusc.scene if scene["name"] in ok_scenes
-        ]
-        return [
-            sample["token"]
-            for sample in self._nusc.sample
-            if sample["scene_token"] in ok_scene_tokens
-        ]
+    def _setup(self, split: str) -> List[Tuple[str, str]]:
+        ok_scene_tokens = self._get_ok_scene_tokens(split)
+        frames = []
+        for scene in tqdm(ok_scene_tokens, desc="Preparing dataset"):
+            scene_rec = self._nusc.get("scene", scene)
+            first_sample_token = scene_rec["first_sample_token"]
+            sample_rec = self._nusc.get("sample", first_sample_token)
+            lidar_token = sample_rec["data"][NUSCENES_LIDAR_NAME]
+            lidar_tokens, lidar_timestamps = self._get_sample_data_sequence(lidar_token)
+            for camera_name in NUSCENES_CAM_NAMES:
+                camera_token = sample_rec["data"][camera_name]
+                camera_tokens, camera_timestamps = self._get_sample_data_sequence(camera_token)
+                # Find the closest lidar sample to each camera sample efficiently
+                # by using the fact that the timestamps are sorted (using numpy.searchsorted)
+                # and then only checking the closest two candidates.
+                indices = np.searchsorted(lidar_timestamps, camera_timestamps)
+                for cam_idx, lidar_idx in enumerate(indices):
+                    candidates = {
+                        max(lidar_idx - 1, 0),
+                        min(lidar_idx, len(lidar_timestamps) - 1),
+                        min(lidar_idx + 1, len(lidar_timestamps) - 1),
+                    }
+                    closest = sorted(
+                        candidates,
+                        key=lambda cand: abs(lidar_timestamps[cand] - camera_timestamps[cam_idx]),
+                    )[0]
+                    frames.append((camera_tokens[cam_idx], lidar_tokens[closest]))
+        print(f"[NuScenes Dataset] Found {len(frames)} frames.")
+        return frames
+
+    def _get_sample_data_sequence(self, sample_data_token: str) -> List[str]:
+        sample_data = self._nusc.get("sample_data", sample_data_token)
+        while sample_data["prev"] != "":
+            sample_data = self._nusc.get("sample_data", sample_data["prev"])
+        tokens, timestamps = [], []
+        while sample_data["next"] != "":
+            tokens.append(sample_data["token"])
+            timestamps.append(sample_data["timestamp"])
+            sample_data = self._nusc.get("sample_data", sample_data["next"])
+        tokens.append(sample_data["token"])
+        timestamps.append(sample_data["timestamp"])
+        return tokens, np.array(timestamps)
 
     def __len__(self):
-        return len(self._frames) * len(NUSCENES_CAM_NAMES)
+        return len(self._frames)
 
     def __getitem__(self, index):
         # Index to token, get relevant data and tokens
-        sample_token = self._frames[index // len(NUSCENES_CAM_NAMES)]
-        cam_name = NUSCENES_CAM_NAMES[index % len(NUSCENES_CAM_NAMES)]
+        camera_token, lidar_token = self._frames[index]
+        return self.get_camera_lidar(camera_token, lidar_token)
 
-        sample_record = self._nusc.get("sample", sample_token)
-        pointsensor_token = sample_record["data"][NUSCENES_LIDAR_NAME]
-        camera_token = sample_record["data"][cam_name]
-
-        cam = self._nusc.get("sample_data", camera_token)
-        pointsensor = self._nusc.get("sample_data", pointsensor_token)
+    def get_camera_lidar(self, cam_token, lidar_token):
+        cam = self._nusc.get("sample_data", cam_token)
+        pointsensor = self._nusc.get("sample_data", lidar_token)
         pcl_path = osp.join(self._nusc.dataroot, pointsensor["filename"])
 
         # Load point cloud
@@ -126,14 +158,16 @@ class NuscenesImageLidarDataset(Dataset):
 
         # Third step:
         # transform from global into the ego vehicle frame for the timestamp of the image.
+        rotinv = Quaternion(poserecord["rotation"]).rotation_matrix.T
         poserecord = self._nusc.get("ego_pose", cam["ego_pose_token"])
-        pc.translate(-np.array(poserecord["translation"]))
-        pc.rotate(Quaternion(poserecord["rotation"]).rotation_matrix.T)
+        pc.rotate(rotinv)
+        pc.translate(-rotinv @ np.array(poserecord["translation"]))
 
         # Fourth step: transform from ego into the camera.
         cs_record = self._nusc.get("calibrated_sensor", cam["calibrated_sensor_token"])
-        pc.translate(-np.array(cs_record["translation"]))
-        pc.rotate(Quaternion(cs_record["rotation"]).rotation_matrix.T)
+        rotinv = Quaternion(cs_record["rotation"]).rotation_matrix.T
+        pc.rotate(rotinv)
+        pc.translate(-rotinv @ np.array(cs_record["translation"]))
 
         # Fifth step: actually take a "picture" of the point cloud.
         # Grab the depths (camera frame z axis points away from the camera).
@@ -232,7 +266,7 @@ class OnceImageLidarDataset(Dataset):
                     anno["calib"][cam_name]["distortion"]
                 )
 
-        print(f"[Dataset] Found {len(frames)*len(CAM_NAMES)} frames.")
+        print(f"[ONCE Dataset] Found {len(frames)*len(CAM_NAMES)} frames.")
         return torch.as_tensor(frames)
 
     def __len__(self):
@@ -598,20 +632,26 @@ class JointImageLidarDataset:
         img_transform,
         once_split,
         nuscenes_split,
+        nuscenes_oversampling: int = -1,
     ):
         self.once_dataset = OnceImageLidarDataset(once_datadir, img_transform, once_split)
         self.nuscenes_dataset = NuscenesImageLidarDataset(
             nuscenes_datadir, img_transform, nuscenes_split
         )
+        if nuscenes_oversampling == -1:
+            nuscenes_oversampling = len(self.once_dataset) // len(self.nuscenes_dataset)
+            print(f"Auto-choosing nuscenes oversampling to be {nuscenes_oversampling}")
+        self._nusc_multiplier = nuscenes_oversampling
 
     def __len__(self):
-        return len(self.once_dataset) + len(self.nuscenes_dataset)
+        return len(self.once_dataset) + self._nusc_multiplier * len(self.nuscenes_dataset)
 
     def __getitem__(self, idx):
         if idx < len(self.once_dataset):
             return self.once_dataset[idx]
         else:
-            return self.nuscenes_dataset[idx - len(self.once_dataset)]
+            wrapped_idx = (idx - len(self.once_dataset)) % len(self.nuscenes_dataset)
+            return self.nuscenes_dataset[wrapped_idx]
 
 
 def _collate_fn(batch):
@@ -630,6 +670,7 @@ def build_loader(
     dataset_name="once",
     nuscenes_datadir=None,
     nuscenes_split="train",
+    nuscenes_oversampling=-1,
 ):
     if dataset_name == "once":
         dataset = OnceImageLidarDataset(datadir, img_transform=clip_preprocess, split=split)
@@ -642,6 +683,7 @@ def build_loader(
             img_transform=clip_preprocess,
             once_split=split,
             nuscenes_split=nuscenes_split,
+            nuscenes_oversampling=nuscenes_oversampling,
         )
     else:
         raise ValueError("Unknown dataset {}".format(dataset_name))

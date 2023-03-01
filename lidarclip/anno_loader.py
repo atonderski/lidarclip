@@ -1,6 +1,7 @@
 import json
 import os
 from copy import deepcopy
+from typing import List, Tuple
 
 import numpy as np
 import torch
@@ -79,15 +80,6 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
         skip_data: bool = False,
         skip_anno: bool = False,
     ):
-        # assert (
-        #     split
-        #     in (
-        #         "train-only",
-        #         "trainval",
-        #         "mini",
-        #     )
-        #     or skip_anno
-        # ), "Annotations are only available for train and val splits."
         super().__init__(
             data_root=data_root,
             img_transform=img_transform,
@@ -96,6 +88,14 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
         )
         self._skip_anno = skip_anno
         self._skip_data = skip_data
+
+    def _setup(self, split: str) -> List[Tuple[str, str, str]]:
+        ok_scene_tokens = self._get_ok_scene_tokens(split)
+        return [
+            sample["token"]
+            for sample in self._nusc.sample
+            if sample["scene_token"] in ok_scene_tokens
+        ]
 
     def __getitem__(self, index):
         anno, meta = None, None
@@ -109,8 +109,8 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
 
     def _get_anno_meta(self, index):
         sample_token = self._frames[index // len(NUSCENES_CAM_NAMES)]
-        sample = self._nusc.get("sample", sample_token)
         cam_name = NUSCENES_CAM_NAMES[index % len(NUSCENES_CAM_NAMES)]
+        sample = self._nusc.get("sample", sample_token)
         cam_token = sample["data"][cam_name]
         # Note: this filters out boxes that are not visible in the camera
         data_path, boxes, cam_intrinsic = self._nusc.get_sample_data(cam_token)
