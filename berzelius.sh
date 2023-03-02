@@ -14,6 +14,7 @@ singularity exec --nv \
   --bind /proj/nlp4adas/checkpoints:/checkpoints \
   --bind /proj/nlp4adas/features:/features \
   --bind /proj/nlp4adas/datasets/once:/once \
+  --bind /proj/berzelius-2021-92/data/nuscenes:/nuscenes \
   --bind /proj/nlp4adas/users/$USER/lidar-clippin/SST/mmdet3d/ops/sst/sst_ops.py:/sst/mmdet3d/ops/sst/sst_ops.py \
   --bind /proj/nlp4adas/users/$USER/lidar-clippin/SST/mmdet3d/models/backbones/sst_v1.py:/sst/mmdet3d/models/backbones/sst_v1.py \
   --bind /proj/nlp4adas/users/$USER/lidar-clippin/SST/mmdet3d/models/backbones/sst_v2.py:/sst/mmdet3d/models/backbones/sst_v2.py \
@@ -21,7 +22,7 @@ singularity exec --nv \
   --pwd /workspace/lidar-clippin/ \
   --env PYTHONPATH=/workspace/lidar-clippin/ \
   /proj/nlp4adas/containers/lidar-clippin.sif \
-  python3 -u train.py --data-dir=/my_data --checkpoint-save-dir=/checkpoints $@
+  python3 -u train.py --checkpoint-save-dir=/checkpoints $@
 
 #
 #EOF

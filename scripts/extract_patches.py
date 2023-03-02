@@ -99,9 +99,10 @@ def main(args):
     )
     # init dataset
     loader = build_loader(
-        datadir=dataset_path,
+        once_datadir=dataset_path,
         clip_preprocess=transform,
-        split=args.split,
+        once_split=args.split,
+        dataset_name="once",
     )
     dataset = loader.dataset
     # Get indexes

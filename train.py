@@ -1,15 +1,13 @@
 import argparse
 import os
 
+import clip
 import pytorch_lightning as pl
+import torch
+from clip.model import CLIP
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-
-import torch
 from torch.nn import functional as F
-
-import clip
-from clip.model import CLIP
 
 from lidarclip.loader import build_loader
 from lidarclip.model.sst import SECOND, LidarEncoderSST
@@ -45,7 +43,8 @@ class LidarClip(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         image, point_cloud = batch
         with torch.no_grad():
-            # This could in principle be pre-computed, but that would break any joint image-lidar augmentations
+            # This could in principle be pre-computed, but that would
+            # break any joint image-lidar augmentations
             image_features = self.clip.encode_image(image)
         lidar_features, _ = self.lidar_encoder(point_cloud)
         loss = self.loss_func((image_features), (lidar_features))
@@ -75,7 +74,6 @@ class LidarClip(pl.LightningModule):
 
 
 def train(
-    data_dir,
     name,
     checkpoint_save_dir,
     checkpoint_path,
@@ -85,7 +83,9 @@ def train(
     resume_wandb_logging=False,
     clip_model_name="ViT-B/32",
     loss_function="mse",
-    nuscenes_datadir="/proj/berzelius-2021-92/data/nuscenes",
+    once_datadir="/once",
+    once_split="train",
+    nuscenes_datadir="/nuscenes",
     nuscenes_split="train",
     dataset_name="once",
     model="sst",
@@ -107,11 +107,12 @@ def train(
     devices = available_gpus if available_gpus else 1
 
     train_loader = build_loader(
-        data_dir,
-        clip_preprocess,
+        clip_preprocess=clip_preprocess,
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=True,
+        once_datadir=once_datadir,
+        once_split=once_split,
         nuscenes_datadir=nuscenes_datadir,
         nuscenes_split=nuscenes_split,
         dataset_name=dataset_name,
@@ -141,7 +142,7 @@ def train(
         checkpoint_path = None
 
     wandb_logger = WandbLogger(
-        project="lidar-clippin",
+        project="lidarclip",
         entity="agp",
         name=name,
         resume=wand_resume,
@@ -182,12 +183,11 @@ def train(
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", required=True)
     parser.add_argument("--name", required=True)
     parser.add_argument("--checkpoint-save-dir", default=None)
     parser.add_argument("--checkpoint", required=False, default="")
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--load-only-model", action="store_true")
     parser.add_argument("--resume-wandb-logging", action="store_true")
     parser.add_argument("--clip-model", default="ViT-L/14", help="which clip model to use")
@@ -197,7 +197,9 @@ def parse_args():
         help="which loss function to use",
         choices=("cosine", "mse"),
     )
-    parser.add_argument("--nuscenes-datadir", default="/proj/berzelius-2021-92/data/nuscenes")
+    parser.add_argument("--once-datadir", default="/once")
+    parser.add_argument("--once-split", default="train")
+    parser.add_argument("--nuscenes-datadir", default="/nuscenes")
     parser.add_argument("--nuscenes-split", default="train")
     parser.add_argument("--dataset-name", default="once")
     parser.add_argument("--model", default="sst")
@@ -209,7 +211,6 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     train(
-        args.data_dir,
         args.name,
         args.checkpoint_save_dir,
         args.checkpoint,
@@ -219,6 +220,8 @@ if __name__ == "__main__":
         args.resume_wandb_logging,
         clip_model_name=args.clip_model,
         loss_function=args.loss_function,
+        once_datadir=args.once_datadir,
+        once_split=args.once_split,
         nuscenes_datadir=args.nuscenes_datadir,
         nuscenes_split=args.nuscenes_split,
         dataset_name=args.dataset_name,

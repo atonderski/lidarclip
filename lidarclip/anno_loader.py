@@ -1,6 +1,7 @@
 import json
 import os
 from copy import deepcopy
+from typing import List, Tuple
 
 import numpy as np
 import torch
@@ -79,15 +80,6 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
         skip_data: bool = False,
         skip_anno: bool = False,
     ):
-        # assert (
-        #     split
-        #     in (
-        #         "train-only",
-        #         "trainval",
-        #         "mini",
-        #     )
-        #     or skip_anno
-        # ), "Annotations are only available for train and val splits."
         super().__init__(
             data_root=data_root,
             img_transform=img_transform,
@@ -96,6 +88,14 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
         )
         self._skip_anno = skip_anno
         self._skip_data = skip_data
+
+    def _setup(self, split: str) -> List[Tuple[str, str, str]]:
+        ok_scene_tokens = self._get_ok_scene_tokens(split)
+        return [
+            sample["token"]
+            for sample in self._nusc.sample
+            if sample["scene_token"] in ok_scene_tokens
+        ]
 
     def __getitem__(self, index):
         anno, meta = None, None
@@ -109,8 +109,8 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
 
     def _get_anno_meta(self, index):
         sample_token = self._frames[index // len(NUSCENES_CAM_NAMES)]
-        sample = self._nusc.get("sample", sample_token)
         cam_name = NUSCENES_CAM_NAMES[index % len(NUSCENES_CAM_NAMES)]
+        sample = self._nusc.get("sample", sample_token)
         cam_token = sample["data"][cam_name]
         # Note: this filters out boxes that are not visible in the camera
         data_path, boxes, cam_intrinsic = self._nusc.get_sample_data(cam_token)
@@ -362,31 +362,35 @@ def _collate_fn(batch):
 
 
 def build_anno_loader(
-    datadir,
-    clip_preprocess,
+    datadir="",  # legacy flag
+    clip_preprocess=None,
     batch_size=32,
     num_workers=16,
-    split="val",
     shuffle=False,
     skip_data=False,
     skip_anno=False,
     return_points_per_obj=False,
+    split="",  # legacy flag
+    once_split="val",
+    nuscenes_split="val",
+    once_datadir="/once",
+    nuscenes_datadir="/nuscenes",
     dataset_name="once",
 ):
     if dataset_name == "once":
         dataset = OnceFullDataset(
-            datadir,
+            datadir or once_datadir,
             img_transform=clip_preprocess,
-            split=split,
+            split=split or once_split,
             skip_data=skip_data,
             skip_anno=skip_anno,
             return_points_per_obj=return_points_per_obj,
         )
     elif dataset_name == "nuscenes":
         dataset = NuscenesFullDataset(
-            datadir,
+            datadir or nuscenes_datadir,
             img_transform=clip_preprocess,
-            split=split,
+            split=split or nuscenes_split,
             skip_data=skip_data,
             skip_anno=skip_anno,
         )

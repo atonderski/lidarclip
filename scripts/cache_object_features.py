@@ -38,8 +38,7 @@ def main(args):
     print("Loading model...")
     model, clip_preprocess = load_model(args)
     print("Setting up dataloader...")
-    build_loader = build_anno_loader
-    loader = build_loader(
+    loader = build_anno_loader(
         args.data_path,
         clip_preprocess,
         batch_size=args.batch_size,

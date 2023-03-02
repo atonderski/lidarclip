@@ -1,19 +1,15 @@
 import argparse
 import os
 
+import clip
+import torch
 from mmcv.runner import load_checkpoint
 from tqdm import tqdm
-
-import torch
-
-import clip
 
 from lidarclip.anno_loader import build_anno_loader
 from lidarclip.loader import build_loader as build_dataonly_loader
 from lidarclip.model.sst import LidarEncoderSST
-
 from train import LidarClip
-
 
 DEFAULT_DATA_PATHS = {
     "once": "/proj/nlp4adas/datasets/once",
@@ -43,11 +39,13 @@ def main(args):
     model, clip_preprocess = load_model(args)
     build_loader = build_anno_loader if args.use_anno_loader else build_dataonly_loader
     loader = build_loader(
-        args.data_path,
-        clip_preprocess,
+        clip_preprocess=clip_preprocess,
         batch_size=args.batch_size,
         num_workers=8,
-        split=args.split,
+        once_datadir=args.once_datadir,
+        once_split=args.split,
+        nuscenes_datadir=args.nuscenes_datadir,
+        nuscenes_split=args.split,
         dataset_name=args.dataset_name,
     )
 
@@ -85,7 +83,8 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint", type=str, required=True, help="Full path to the checkpoint file"
     )
     parser.add_argument("--clip-version", type=str, default="ViT-L/14")
-    parser.add_argument("--data-path", type=str, default=None)
+    parser.add_argument("--once-datadir", type=str, default=None)
+    parser.add_argument("--nuscenes-datadir", type=str, default=None)
     parser.add_argument("--split", type=str, default="val")
     parser.add_argument("--prefix", type=str, default="/features/cached")
     parser.add_argument("--batch-size", type=int, default=32)
@@ -93,8 +92,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-name", type=str, default="once", choices=["once", "nuscenes"])
     parser.add_argument("--no-pooling", action="store_true")
     args = parser.parse_args()
-    if not args.data_path:
-        args.data_path = DEFAULT_DATA_PATHS[args.dataset_name]
+    if not args.once_datadir:
+        args.once_datadir = DEFAULT_DATA_PATHS["once"]
+    if not args.nuscenes_datadir:
+        args.nuscenes_datadir = DEFAULT_DATA_PATHS["nuscenes"]
     return args
 
 
