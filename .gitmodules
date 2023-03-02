@@ -1,4 +1,4 @@
 [submodule "SST"]
 	path = SST
-	url = git@github.com:TuSimple/SST.git
+	url = git@github.com:atonderski/SST-lidarclip.git
 	ignore = dirty

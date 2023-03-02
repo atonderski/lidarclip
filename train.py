@@ -142,7 +142,7 @@ def train(
         checkpoint_path = None
 
     wandb_logger = WandbLogger(
-        project="lidar-clippin",
+        project="lidarclip",
         entity="agp",
         name=name,
         resume=wand_resume,
@@ -186,8 +186,8 @@ def parse_args():
     parser.add_argument("--name", required=True)
     parser.add_argument("--checkpoint-save-dir", default=None)
     parser.add_argument("--checkpoint", required=False, default="")
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--load-only-model", action="store_true")
     parser.add_argument("--resume-wandb-logging", action="store_true")
     parser.add_argument("--clip-model", default="ViT-L/14", help="which clip model to use")
