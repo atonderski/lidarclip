@@ -20,6 +20,12 @@ DEFAULT_DATA_PATHS = {
     "nuscenes": "/proj/berzelius-2021-92/data/nuscenes",
 }
 
+"""
+DEFAULT_DATA_PATHS = {
+    "once": "/mimer/NOBACKUP/groups/clippin/datasets/once",
+    "nuscenes": "/mimer/NOBACKUP/groups/clippin/datasets/nuscenes",
+}
+"""
 
 def load_model(args):
     clip_model, clip_preprocess = clip.load(args.clip_version)
