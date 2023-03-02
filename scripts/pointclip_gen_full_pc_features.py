@@ -97,7 +97,8 @@ def main(args):
 
     print("Finished processing all samples")
 
-    filename = f"features_fullPC_{args.clip_model.replace('/', '')}.pt"
+    filename = f"features_fullPC_{args.clip_model.replace('/', '')}_{args.split}"
+    filename += "-anno.pt" if args.use_anno_loader else ".pt" 
     torch.save(torch.cat(pointclip_zs.feat_store, dim=0), os.path.join(args.output, filename))
 
 
