@@ -160,21 +160,24 @@ def main(args):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--output_dir",
+        "--output-dir",
         type=str,
-        default="/home/s0001396/Documents/phd/wasp/nlp/lidar-clippin/gen_images/once_val_og",
+        default="/mimer/NOBACKUP/groups/clippin/gen_images/once_train_og",
         choices=[
+            "/mimer/NOBACKUP/groups/clippin/gen_images/once_train_og",
             "/mimer/NOBACKUP/groups/clippin/gen_images/once_val_og",
+            "/mimer/NOBACKUP/groups/clippin/gen_images/once_val_og_DELETE",
             "/home/s0001396/Documents/phd/wasp/nlp/lidar-clippin/gen_images/once_val_og",
         ],
     )
     parser.add_argument(
         "--range-view-output-dir",
         type=str,
-        default="/home/s0001396/Documents/phd/wasp/nlp/lidar-clippin/gen_images/once_val_og_lidar",
+        default="/mimer/NOBACKUP/groups/clippin/gen_images/once_train_og_lidar",
         choices=[
+            "/mimer/NOBACKUP/groups/clippin/gen_images/once_train_og_lidar",
             "/mimer/NOBACKUP/groups/clippin/gen_images/once_val_og_lidar",
-            "/home/s0001396/Documents/phd/wasp/nlp/lidar-clippin/gen_images/once_val_og_lidar",
+            "/home/s0001396/Documents/phd/wasp/nlp/lidar-clippin/gen_images/once_train_og_lidar",
         ],
     )
     parser.add_argument(
