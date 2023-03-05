@@ -79,6 +79,7 @@ def train(
     checkpoint_path,
     batch_size,
     num_workers,
+    epochs,
     load_only_model=False,
     resume_wandb_logging=False,
     clip_model_name="ViT-B/32",
@@ -166,7 +167,7 @@ def train(
         accelerator=accelerator,
         devices=devices,
         limit_train_batches=None,
-        max_epochs=1,
+        max_epochs=epochs,
         logger=wandb_logger,
         strategy="ddp",
         callbacks=[checkpoint_callback, learningrate_callback],
@@ -187,6 +188,7 @@ def parse_args():
     parser.add_argument("--checkpoint-save-dir", default=None)
     parser.add_argument("--checkpoint", required=False, default="")
     parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--load-only-model", action="store_true")
     parser.add_argument("--resume-wandb-logging", action="store_true")
@@ -216,6 +218,7 @@ if __name__ == "__main__":
         args.checkpoint,
         args.batch_size,
         args.workers,
+        args.epochs,
         args.load_only_model,
         args.resume_wandb_logging,
         clip_model_name=args.clip_model,
