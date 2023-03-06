@@ -13,6 +13,7 @@ from lidarclip.loader import (
     NUSCENES_CAM_NAMES,
     NuscenesImageLidarDataset,
     OnceImageLidarDataset,
+    NUSCENES_LIDAR_NAME,
 )
 
 # ONCE settings
@@ -102,7 +103,12 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
         if self._skip_data:
             img, pc = torch.zeros((3, 0, 0)), torch.zeros((0, 4))
         else:
-            img, pc = super().__getitem__(index)
+            sample_token = self._frames[index // len(NUSCENES_CAM_NAMES)]
+            cam_name = NUSCENES_CAM_NAMES[index % len(NUSCENES_CAM_NAMES)]
+            sample = self._nusc.get("sample", sample_token)
+            cam_token = sample["data"][cam_name]
+            lidar_token = sample["data"][NUSCENES_LIDAR_NAME]
+            img, pc = self.get_camera_lidar(cam_token, lidar_token)
         if not self._skip_anno:
             anno, meta = self._get_anno_meta(index)
         return img, pc, anno, meta
@@ -438,7 +444,7 @@ def demo_once():
 
 
 def demo_nuscenes():
-    datadir = "/Users/s0000960/data/nuscenes"
+    datadir = "/home/s0001396/Documents/phd/datasets/nuscenes"
     loader = build_anno_loader(
         datadir,
         lambda x: x,
