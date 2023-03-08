@@ -142,6 +142,7 @@ class OnceFullDataset(OnceImageLidarDataset):
         skip_data: bool = False,
         skip_anno: bool = False,
         return_points_per_obj: bool = False,
+        skip_anno_transform: bool = False,
     ):
         assert (
             split
@@ -162,6 +163,7 @@ class OnceFullDataset(OnceImageLidarDataset):
         self._skip_anno = skip_anno
         self._skip_data = skip_data
         self._return_points_per_obj = return_points_per_obj
+        self._skip_anno_transform = skip_anno_transform
         self._setup_for_annos()
 
     def _setup_for_annos(self):
@@ -229,32 +231,16 @@ class OnceFullDataset(OnceImageLidarDataset):
             annos["boxes_2d"] = annos["boxes_2d"][cam_name]
             annos = self._keep_annos_in_image(annos)
             boxes_3d = torch.tensor(annos["boxes_3d"]).reshape(-1, 7)
-            transformed_boxes_center_coord = (
-                self._transform_lidar_and_remove_points_outside_cam_torch(
-                    boxes_3d[:, :4], calib, og_size=None, remove_points_outside_cam=False
-                )
-            )
-            # Rotation matrix to go from camera to lidar
-            rot_mat = calib["cam_to_velo"][:3, :3]
-            # Rotation in radians
-            rots = boxes_3d[:, -1:]
-            # Put rotation as a vector with origo in center of lidar
-            rot_points = torch.cat([rots.cos(), rots.sin(), torch.zeros_like(rots)], dim=1)
-            # Rotate the rotation vector to camera coordinate system
-            rot_points = rot_points @ rot_mat.inverse().T
-            # Get the angle of the vector in camera coordinate system
-            rots = torch.atan2(rot_points[:, 2:3], rot_points[:, 0:1])
-            # Remove pi/2 to get the angle of the box in KITTI format
-            rots = rots - np.pi / 2
-            transformed_boxes = torch.cat(
-                [transformed_boxes_center_coord[:, :3], boxes_3d[:, 3:-1], rots], dim=1
-            )
+            if self._skip_anno_transform:
+                transformed_boxes = boxes_3d
+            else:
+                transformed_boxes = self._transform_boxes(calib, boxes_3d)
             annos["boxes_3d"] = transformed_boxes
-            # x,y,z,l,w,h,rz in kitti format
-            # (x,y,z is the center of the box) x is forward, y is left, z is up
-
-            points_per_obj = self._get_points_per_obj(annos, point_cloud)
-            annos["points_per_obj"] = points_per_obj
+            if self._return_points_per_obj:
+                # x,y,z,l,w,h,rz in kitti format
+                # (x,y,z is the center of the box) x is forward, y is left, z is up
+                points_per_obj = self._get_points_per_obj(annos, point_cloud)
+                annos["points_per_obj"] = points_per_obj
             annos["seq_info"] = {
                 "sequence_id": sequence_id,
                 "frame_id": frame_id,
@@ -263,6 +249,28 @@ class OnceFullDataset(OnceImageLidarDataset):
             }
 
         return image, point_cloud, annos, meta_info
+
+    def _transform_boxes(self, calib, boxes_3d):
+        transformed_boxes_center_coord = self._transform_lidar_and_remove_points_outside_cam_torch(
+            boxes_3d[:, :4], calib, og_size=None, remove_points_outside_cam=False
+        )
+        # Rotation matrix to go from camera to lidar
+        rot_mat = calib["cam_to_velo"][:3, :3]
+        # Rotation in radians
+        rots = boxes_3d[:, -1:]
+        # Put rotation as a vector with origo in center of lidar
+        rot_points = torch.cat([rots.cos(), rots.sin(), torch.zeros_like(rots)], dim=1)
+        # Rotate the rotation vector to camera coordinate system
+        rot_points = rot_points @ rot_mat.inverse().T
+        # Get the angle of the vector in camera coordinate system
+        rots = torch.atan2(rot_points[:, 2:3], rot_points[:, 0:1])
+        # Remove pi/2 to get the angle of the box in KITTI format
+        rots = rots - np.pi / 2
+        transformed_boxes = torch.cat(
+            [transformed_boxes_center_coord[:, :3], boxes_3d[:, 3:-1], rots], dim=1
+        )
+
+        return transformed_boxes
 
     def _rotate_point_cloud_torch(self, point_cloud, rot_angle):
         """Rotate point cloud by rot_angle around z axis.
@@ -382,6 +390,7 @@ def build_anno_loader(
     once_datadir="/once",
     nuscenes_datadir="/nuscenes",
     dataset_name="once",
+    skip_anno_transform=False,
 ):
     if dataset_name == "once":
         dataset = OnceFullDataset(
@@ -391,8 +400,10 @@ def build_anno_loader(
             skip_data=skip_data,
             skip_anno=skip_anno,
             return_points_per_obj=return_points_per_obj,
+            skip_anno_transform=skip_anno_transform,
         )
     elif dataset_name == "nuscenes":
+        del skip_anno_transform  # This is a legacy flag for ONCE
         dataset = NuscenesFullDataset(
             datadir or nuscenes_datadir,
             img_transform=clip_preprocess,
