@@ -90,6 +90,9 @@ class NuscenesFullDataset(NuscenesImageLidarDataset):
         self._skip_anno = skip_anno
         self._skip_data = skip_data
 
+    def __len__(self):
+        return len(self._frames) * len(NUSCENES_CAM_NAMES)
+
     def _setup(self, split: str) -> List[Tuple[str, str, str]]:
         ok_scene_tokens = self._get_ok_scene_tokens(split)
         return [
