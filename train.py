@@ -30,6 +30,7 @@ class LidarClip(pl.LightningModule):
         batch_size: int,
         epoch_size: int,
         loss: str = "mse",
+        optimizer: str = "adam",
     ):
         super().__init__()
         self.lidar_encoder = lidar_encoder
@@ -46,6 +47,7 @@ class LidarClip(pl.LightningModule):
             self.loss_func = DepthLoss()
         else:
             raise ValueError(f"Loss {loss} not supported")
+        self._optimizer_type = optimizer
 
     def training_step(self, batch, batch_idx):
         image, point_cloud = batch
@@ -68,16 +70,16 @@ class LidarClip(pl.LightningModule):
             epoch_size = int(self.epoch_size)
         steps_per_epoch = epoch_size // self.trainer.accumulate_grad_batches
 
-        if isinstance(self.loss_func, DepthLoss):
+        if self._optimizer_type == "lamb":
             optimizer = Lamb(self.lidar_encoder.parameters(), lr=0.006, weight_decay=1e-4)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 optimizer,
-                T_0=0.1 * len(steps_per_epoch),
+                T_0=int(0.1 * steps_per_epoch),
                 T_mult=1,
                 eta_min=max(1e-2 * 1e-3, 1e-6),
                 last_epoch=-1,
             )
-        else:
+        elif self._optimizer_type == "adam":
             optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=1e-5)
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer,
@@ -87,6 +89,8 @@ class LidarClip(pl.LightningModule):
                 steps_per_epoch=steps_per_epoch,
                 epochs=self.trainer.max_epochs,
             )
+        else:
+            raise ValueError(f"Optimizer {self._optimizer_type} not supported")
         scheduler = {"scheduler": scheduler, "interval": "step"}
         return [optimizer], [scheduler]
 
@@ -113,6 +117,7 @@ def train(
     clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
     clip_model.eval()
     clip_embed_dim = clip_model.visual.output_dim
+    model_type = model
     if model == "sst":
         lidar_encoder = LidarEncoderSST(
             "lidarclip/model/sst_encoder_only_config.py", clip_embed_dim
@@ -143,7 +148,12 @@ def train(
     wandb_id = None
     wand_resume = False
     model = LidarClip(
-        lidar_encoder, clip_model, batch_size, len(train_loader) / devices, loss_function
+        lidar_encoder,
+        clip_model,
+        batch_size,
+        len(train_loader) / devices,
+        loss_function,
+        args.optimizer,
     )
     if len(checkpoint_path) and resume_wandb_logging:
         wandb_id = checkpoint_path.split("/")[-2]
@@ -184,7 +194,7 @@ def train(
     )
     learningrate_callback = LearningRateMonitor(logging_interval="step")
     trainer = pl.Trainer(
-        precision=16,
+        precision=32 if model_type == "depth" else 16,
         accelerator=accelerator,
         devices=devices,
         limit_train_batches=None,
@@ -226,6 +236,7 @@ def parse_args():
     parser.add_argument("--nuscenes-split", default="train")
     parser.add_argument("--dataset-name", default="once")
     parser.add_argument("--model", default="sst")
+    parser.add_argument("--optimizer", default="adam")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args

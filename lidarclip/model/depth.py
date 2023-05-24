@@ -24,16 +24,22 @@ class DepthLoss(nn.Module):
         Returns:
             torch.Tensor: Loss value
         """
+        if img_feats.shape[0] == 1:
+            print("Warning: Batch size of 1, contrastive loss will be 0")
         if lidar_feats.shape[1] == 1:
             # this is the simple settings without multiple depth views
             return self.criterion(lidar_feats, img_feats)
-        assert lidar_feats[1] == 2, "Mult-view depth map must have exactly 2 views"
+        assert lidar_feats.shape[1] == 2, "Mult-view depth map must have exactly 2 views"
         depth1_feats = lidar_feats[:, 0]
         depth2_feats = lidar_feats[:, 1]
         depth_feats = (depth1_feats + depth2_feats) * 0.5
         img_loss = self.criterion(depth_feats, img_feats)
+        print("img ", img_loss)
         depth_loss = self.criterion(depth1_feats, depth2_feats)
-        return img_loss + depth_loss / (self.weights**2) + torch.log(self.weights + 1)
+        print("depth: ", depth_loss)
+        weighted_loss = img_loss + depth_loss / (self.weights**2) + torch.log(self.weights + 1)
+        print("weighted: ", weighted_loss)
+        return weighted_loss
 
 
 class DepthEncoder(nn.Module):
@@ -52,8 +58,8 @@ class DepthEncoder(nn.Module):
             224,
             224,
         ), "Point cloud must rendered into a depth map of shape (..., 3, 224, 224)"
-        feats = self._clip.encode_image(depths)
-        return rearrange(feats, "(b v) c -> b v c", v=n_views)
+        feats = self._clip.encode_image(point_cloud)
+        return rearrange(feats, "(b v) c -> b v c", v=n_views), None  # no attention for now
 
     # def render_depth(self, point_clouds: List[torch.Tensor], aug: bool = False) -> torch.Tensor:
     #     depth1s = []
