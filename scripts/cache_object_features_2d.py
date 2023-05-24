@@ -19,7 +19,7 @@ IMAGE_Y_MAX = CENTERCROP_BOX[3] + 60
 IMAGE_SCALING = 1080//224
 VOXEL_SIZE = 1
 MIN_DISTANCE = 0
-MAX_DISTANCE = 5  # Discard objects beyond this distance
+MAX_DISTANCE = 40  # Discard objects beyond this distance
 
 DEFAULT_DATA_PATHS = {
     "once": "/once",
