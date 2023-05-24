@@ -8,23 +8,29 @@ from clip.model import CLIP
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch.nn import functional as F
+from torch_optimizer import Lamb
 
 from lidarclip.loader import build_loader
-from lidarclip.model.sst import SECOND, LidarEncoderSST
 
-
-def l2norm(t):
-    return F.normalize(t, dim=-1, p=2)
+try:
+    from lidarclip.model.sst import SECOND, LidarEncoderSST
+except ImportError:
+    print("Got ImportError for SST model, not importing")
+try:
+    from lidarclip.model.depth import DepthEncoder, DepthLoss
+except ImportError:
+    print("Got ImportError for Depth model and loss, not importing")
 
 
 class LidarClip(pl.LightningModule):
     def __init__(
         self,
-        lidar_encoder: LidarEncoderSST,
+        lidar_encoder: torch.nn.Module,
         clip_model: CLIP,
         batch_size: int,
         epoch_size: int,
         loss: str = "mse",
+        optimizer: str = "adam",
     ):
         super().__init__()
         self.lidar_encoder = lidar_encoder
@@ -37,8 +43,11 @@ class LidarClip(pl.LightningModule):
             self.loss_func = F.mse_loss
         elif loss == "cosine":
             self.loss_func = lambda x, y: -F.cosine_similarity(x, y).mean()
+        elif loss == "depth":
+            self.loss_func = DepthLoss()
         else:
             raise ValueError(f"Loss {loss} not supported")
+        self._optimizer_type = optimizer
 
     def training_step(self, batch, batch_idx):
         image, point_cloud = batch
@@ -47,12 +56,11 @@ class LidarClip(pl.LightningModule):
             # break any joint image-lidar augmentations
             image_features = self.clip.encode_image(image)
         lidar_features, _ = self.lidar_encoder(point_cloud)
-        loss = self.loss_func((image_features), (lidar_features))
+        loss = self.loss_func(image_features, lidar_features)
         self.log("train_loss", loss.detach())
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=1e-5)
         # Epoch_size is number of batches/steps per epoch
         if type(self.trainer.limit_train_batches) == float:
             epoch_size = int(self.epoch_size * self.trainer.limit_train_batches)
@@ -61,14 +69,28 @@ class LidarClip(pl.LightningModule):
         elif self.trainer.limit_train_batches is None:
             epoch_size = int(self.epoch_size)
         steps_per_epoch = epoch_size // self.trainer.accumulate_grad_batches
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer,
-            max_lr=1e-3,
-            # total_steps=self.trainer.estimated_stepping_batches,
-            pct_start=0.1,
-            steps_per_epoch=steps_per_epoch,
-            epochs=self.trainer.max_epochs,
-        )
+
+        if self._optimizer_type == "lamb":
+            optimizer = Lamb(self.lidar_encoder.parameters(), lr=0.006, weight_decay=1e-4)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=int(0.1 * steps_per_epoch),
+                T_mult=1,
+                eta_min=max(1e-2 * 1e-3, 1e-6),
+                last_epoch=-1,
+            )
+        elif self._optimizer_type == "adam":
+            optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=1e-5)
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer,
+                max_lr=1e-3,
+                # total_steps=self.trainer.estimated_stepping_batches,
+                pct_start=0.1,
+                steps_per_epoch=steps_per_epoch,
+                epochs=self.trainer.max_epochs,
+            )
+        else:
+            raise ValueError(f"Optimizer {self._optimizer_type} not supported")
         scheduler = {"scheduler": scheduler, "interval": "step"}
         return [optimizer], [scheduler]
 
@@ -95,12 +117,15 @@ def train(
     clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
     clip_model.eval()
     clip_embed_dim = clip_model.visual.output_dim
+    model_type = model
     if model == "sst":
         lidar_encoder = LidarEncoderSST(
             "lidarclip/model/sst_encoder_only_config.py", clip_embed_dim
         )
     elif model == "second":
         lidar_encoder = SECOND("lidarclip/model/centerpoint_encoder_only.py", clip_embed_dim)
+    elif model == "depth":
+        lidar_encoder = DepthEncoder(clip_model_name)
     else:
         raise NotImplementedError(f"model {model} not implemented yet")
     available_gpus = torch.cuda.device_count() or None
@@ -117,12 +142,18 @@ def train(
         nuscenes_datadir=nuscenes_datadir,
         nuscenes_split=nuscenes_split,
         dataset_name=dataset_name,
+        depth_rendering="aug" if model == "depth" else False,
     )
 
     wandb_id = None
     wand_resume = False
     model = LidarClip(
-        lidar_encoder, clip_model, batch_size, len(train_loader) / devices, loss_function
+        lidar_encoder,
+        clip_model,
+        batch_size,
+        len(train_loader) / devices,
+        loss_function,
+        args.optimizer,
     )
     if len(checkpoint_path) and resume_wandb_logging:
         wandb_id = checkpoint_path.split("/")[-2]
@@ -163,7 +194,7 @@ def train(
     )
     learningrate_callback = LearningRateMonitor(logging_interval="step")
     trainer = pl.Trainer(
-        precision=16,
+        precision=32 if model_type == "depth" else 16,
         accelerator=accelerator,
         devices=devices,
         limit_train_batches=None,
@@ -197,7 +228,7 @@ def parse_args():
         "--loss-function",
         default="mse",
         help="which loss function to use",
-        choices=("cosine", "mse"),
+        choices=("cosine", "mse", "depth"),
     )
     parser.add_argument("--once-datadir", default="/once")
     parser.add_argument("--once-split", default="train")
@@ -205,6 +236,7 @@ def parse_args():
     parser.add_argument("--nuscenes-split", default="train")
     parser.add_argument("--dataset-name", default="once")
     parser.add_argument("--model", default="sst")
+    parser.add_argument("--optimizer", default="adam")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args

@@ -19,6 +19,11 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
 
+try:
+    from lidarclip.depth_renderer import DepthRenderer
+except ImportError:
+    print("DepthRenderer not available, depth rendering will not work")
+
 CAM_NAMES = ["cam0%d" % cam_num for cam_num in (1, 3, 5, 6, 7, 8, 9)]
 ONCE_SPLITS = {
     "train": ("train", "raw_small", "raw_medium", "raw_large"),
@@ -53,6 +58,7 @@ class NuscenesImageLidarDataset(Dataset):
         img_transform,
         split: str = "train",
         min_dist: float = 0.5,
+        **kwargs,
     ) -> None:
         super().__init__()
         self._data_root = data_root
@@ -203,11 +209,18 @@ class NuscenesImageLidarDataset(Dataset):
 
 
 class OnceImageLidarDataset(Dataset):
-    def __init__(self, data_root: str, img_transform, split: str = "train"):
+    def __init__(
+        self, data_root: str, img_transform, split: str = "train", depth_rendering=False, **kwargs
+    ):
         super().__init__()
         self._data_root = join(data_root, "data")
         self._frames = self._setup(split)
         self._img_transform = img_transform
+        self._deth_renderer = None
+        depth_rendering = str(depth_rendering).lower()
+        if depth_rendering not in ("none", "false"):
+            assert depth_rendering in ("true", "aug")
+            self._depth_renderer = DepthRenderer(aug=(depth_rendering == "aug"))
         gc.collect()
 
     def _setup(self, split: str) -> torch.Tensor:
@@ -323,6 +336,13 @@ class OnceImageLidarDataset(Dataset):
         point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
             point_cloud, calib, og_size
         )
+        if self._depth_renderer:
+            pc1 = self._depth_renderer(point_cloud, calib, og_size)
+            if self._depth_renderer.aug:
+                pc2 = self._depth_renderer(point_cloud, calib, og_size)
+                point_cloud = torch.stack((pc1, pc2))
+            else:
+                point_cloud = pc1[None]  # add view dim
 
         return image, point_cloud
 
@@ -633,10 +653,11 @@ class JointImageLidarDataset:
         once_split,
         nuscenes_split,
         nuscenes_oversampling: int = -1,
+        **kwargs,
     ):
-        self.once_dataset = OnceImageLidarDataset(once_datadir, img_transform, once_split)
+        self.once_dataset = OnceImageLidarDataset(once_datadir, img_transform, once_split, **kwargs)
         self.nuscenes_dataset = NuscenesImageLidarDataset(
-            nuscenes_datadir, img_transform, nuscenes_split
+            nuscenes_datadir, img_transform, nuscenes_split, **kwargs
         )
         if nuscenes_oversampling == -1:
             nuscenes_oversampling = len(self.once_dataset) // len(self.nuscenes_dataset)
@@ -657,6 +678,9 @@ class JointImageLidarDataset:
 def _collate_fn(batch):
     batched_img = default_collate([elem[0] for elem in batch])
     batched_pc = [elem[1] for elem in batch]
+    if len(batched_pc[0].shape) == 4:
+        # depth map can be batched into a single tensor
+        batched_pc = default_collate(batched_pc)
     return batched_img, batched_pc
 
 
@@ -673,16 +697,21 @@ def build_loader(
     nuscenes_datadir="",
     nuscenes_split="train",
     nuscenes_oversampling=-1,
+    depth_rendering=False,
 ):
     if dataset_name == "once":
         dataset = OnceImageLidarDataset(
-            datadir or once_datadir, img_transform=clip_preprocess, split=split or once_split
+            datadir or once_datadir,
+            img_transform=clip_preprocess,
+            split=split or once_split,
+            depth_rendering=depth_rendering,
         )
     elif dataset_name == "nuscenes":
         dataset = NuscenesImageLidarDataset(
             datadir or nuscenes_datadir,
             img_transform=clip_preprocess,
             split=split or nuscenes_split,
+            depth_rendering=depth_rendering,
         )
     elif dataset_name == "joint":
         assert not datadir and not split, "Cannot use legacy flags with joint dataset"
@@ -693,6 +722,7 @@ def build_loader(
             once_split=once_split,
             nuscenes_split=nuscenes_split,
             nuscenes_oversampling=nuscenes_oversampling,
+            depth_rendering=depth_rendering,
         )
     else:
         raise ValueError("Unknown dataset {}".format(dataset_name))
@@ -718,16 +748,18 @@ def demo_dataset():
 
     nuscenes_datadir = "/Users/s0000960/data/nuscenes"
     once_datadir = "/Users/s0000960/data/once"
+    depth_rendering = "aug"
     loader = build_loader(
         clip_preprocess=clip_preprocess,
         num_workers=0,
         batch_size=2,
-        dataset_name="joint",
+        dataset_name="once",
         once_split="val",
         once_datadir=once_datadir,
         nuscenes_datadir=nuscenes_datadir,
         nuscenes_split="mini",
         shuffle=True,
+        depth_rendering=depth_rendering,
     )
     iter_loader = iter(loader)
     for i, (images, lidars) in enumerate(iter_loader):
@@ -736,18 +768,20 @@ def demo_dataset():
         stds = torch.tensor([0.26862954, 0.26130258, 0.27577711], device="cpu")
         image = rearrange(images[0], "c h w -> h w c") * stds + means
         lidar = lidars[0]
-        mindist = np.linalg.norm(lidar[:, :3], axis=-1).min()
-        if lidar.shape[0] > 1000 and mindist < 10:
-            print(f"skipping, {lidar.shape[0]} points, minimum distance is {mindist}")
-            continue
-        print(f"sample {i} with {lidar.shape[0]} points, minimum distance is {mindist}")
-        # lidar = lidar[torch.randperm(lidar.shape[0])[:8192]]
         plt.figure()
         plt.imshow(image)
         plt.figure()
-        # for visualization convert to x-right, y-forward
-        plt.scatter(-lidar[:, 1], lidar[:, 0], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm")
-        plt.axis("equal")
+        if depth_rendering:
+            for i, depth in enumerate(lidar):
+                plt.subplot(121 + i)
+                depth = rearrange(depth, "c h w -> h w c") * stds + means
+                plt.imshow(depth)
+        else:
+            # for visualization convert to x-right, y-forward
+            plt.scatter(
+                -lidar[:, 1], lidar[:, 0], s=0.1, c=np.clip(lidar[:, 3], 0, 1), cmap="coolwarm"
+            )
+            plt.axis("equal")
         # plt.xlim(-10, 10)
         # plt.ylim(0, 40)
         # plt.figure()
