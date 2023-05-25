@@ -6,12 +6,12 @@ import clip
 import torch
 from tqdm import tqdm
 
-from lidarclip.anno_loader import build_anno_loader, CENTERCROP_BOX
+from lidarclip.anno_loader import build_anno_loader
 
-IMAGE_X_MIN = CENTERCROP_BOX[0]
-IMAGE_Y_MIN = CENTERCROP_BOX[1]
-IMAGE_X_MAX = CENTERCROP_BOX[2] + 60
-IMAGE_Y_MAX = CENTERCROP_BOX[3] + 60
+IMAGE_X_MIN = 420
+IMAGE_Y_MIN = 0
+IMAGE_X_MAX = 420 + 1080
+IMAGE_Y_MAX = 1080
 IMAGE_SCALING = 1080 // 224
 VOXEL_SIZE = 1
 MIN_DISTANCE = 0

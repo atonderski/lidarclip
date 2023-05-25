@@ -31,6 +31,7 @@ class LidarClip(pl.LightningModule):
         epoch_size: int,
         loss: str = "mse",
         optimizer: str = "adam",
+        do_gather: bool = False,
     ):
         super().__init__()
         self.lidar_encoder = lidar_encoder
@@ -48,14 +49,24 @@ class LidarClip(pl.LightningModule):
         else:
             raise ValueError(f"Loss {loss} not supported")
         self._optimizer_type = optimizer
+        self.do_gather = do_gather
 
     def training_step(self, batch, batch_idx):
-        image, point_cloud = batch
+        image, point_cloud, metadata = batch
         with torch.no_grad():
             # This could in principle be pre-computed, but that would
             # break any joint image-lidar augmentations
             image_features = self.clip.encode_image(image)
-        lidar_features, _ = self.lidar_encoder(point_cloud)
+        lidar_features, _ = self.lidar_encoder(point_cloud, metadata=metadata)
+        if self.do_gather:
+            image_features_shape = image_features.shape
+            lidar_features_shape = lidar_features.shape
+            image_features = self.all_gather(image_features, sync_grads=False).view(
+                -1, *image_features_shape[1:]
+            )
+            lidar_features = self.all_gather(lidar_features, sync_grads=True).view(
+                -1, *lidar_features_shape[1:]
+            )
         loss = self.loss_func(image_features, lidar_features)
         self.log("train_loss", loss.detach())
         return loss
@@ -125,7 +136,7 @@ def train(
     elif model == "second":
         lidar_encoder = SECOND("lidarclip/model/centerpoint_encoder_only.py", clip_embed_dim)
     elif model == "depth":
-        lidar_encoder = DepthEncoder(clip_model_name)
+        lidar_encoder = DepthEncoder(clip_model_name, True)
     else:
         raise NotImplementedError(f"model {model} not implemented yet")
     available_gpus = torch.cuda.device_count() or None
@@ -154,6 +165,7 @@ def train(
         len(train_loader) / devices,
         loss_function,
         args.optimizer,
+        args.do_gather,
     )
     if len(checkpoint_path) and resume_wandb_logging:
         wandb_id = checkpoint_path.split("/")[-2]
@@ -237,6 +249,7 @@ def parse_args():
     parser.add_argument("--dataset-name", default="once")
     parser.add_argument("--model", default="sst")
     parser.add_argument("--optimizer", default="adam")
+    parser.add_argument("--do-gather", action="store_true")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
     return args

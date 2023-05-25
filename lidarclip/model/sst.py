@@ -27,7 +27,7 @@ class LidarEncoderSST(nn.Module):
             input_dim=sst_model_conf["backbone"]["conv_out_channel"],
         )
 
-    def forward(self, point_cloud, no_pooling=False, return_attention=False):
+    def forward(self, point_cloud, no_pooling=False, return_attention=False, metadata=None):
         lidar_features = self._sst.extract_feat(point_cloud, None)[0]  # bs, d, h, w
         pooled_feature, attn_weights = self._pooler(lidar_features, no_pooling, return_attention)
         return pooled_feature, attn_weights
@@ -44,7 +44,7 @@ class SECOND(nn.Module):
             input_dim=second_model_conf["pts_bbox_head"]["in_channels"],
         )
 
-    def forward(self, point_cloud, no_pooling=False, return_attention=False):
+    def forward(self, point_cloud, no_pooling=False, return_attention=False, metadata=None):
         lidar_features = self._second.extract_pts_feat(point_cloud, None, None)[0]
         pooled_feature, attn_weights = self._pooler(lidar_features, no_pooling, return_attention)
         return pooled_feature, attn_weights

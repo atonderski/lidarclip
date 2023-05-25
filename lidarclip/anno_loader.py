@@ -146,6 +146,8 @@ class OnceFullDataset(OnceImageLidarDataset):
         skip_anno: bool = False,
         return_points_per_obj: bool = False,
         skip_anno_transform: bool = False,
+        depth_rendering=False,
+        **kwargs,
     ):
         assert (
             split
@@ -162,6 +164,7 @@ class OnceFullDataset(OnceImageLidarDataset):
             data_root=data_root,
             img_transform=img_transform,
             split=split,
+            depth_rendering=depth_rendering,
         )
         self._skip_anno = skip_anno
         self._skip_data = skip_data
@@ -250,6 +253,12 @@ class OnceFullDataset(OnceImageLidarDataset):
                 "cam_name": cam_name,
                 "seq_idx": seq_idx,
             }
+
+        if self.depth_rendering:
+            assert not self._skip_data, "Cannot render depth if skipping data."
+            annos = annos or dict()
+            annos["cam_intrinsic"] = calib["cam_intrinsic"].clone()
+            annos["img_size"] = torch.tensor(og_size)
 
         return image, point_cloud, annos, meta_info
 
@@ -394,6 +403,7 @@ def build_anno_loader(
     nuscenes_datadir="/nuscenes",
     dataset_name="once",
     skip_anno_transform=False,
+    depth_rendering=False,
 ):
     if dataset_name == "once":
         dataset = OnceFullDataset(
@@ -404,6 +414,7 @@ def build_anno_loader(
             skip_anno=skip_anno,
             return_points_per_obj=return_points_per_obj,
             skip_anno_transform=skip_anno_transform,
+            depth_rendering=depth_rendering,
         )
     elif dataset_name == "nuscenes":
         del skip_anno_transform  # This is a legacy flag for ONCE
