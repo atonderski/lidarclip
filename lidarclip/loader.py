@@ -220,6 +220,7 @@ class OnceImageLidarDataset(Dataset):
         depth_rendering = str(depth_rendering).lower()
         if depth_rendering not in ("none", "false"):
             assert depth_rendering in ("true", "aug")
+            self.depth_rendering = True
             self._depth_renderer = DepthRenderer(aug=(depth_rendering == "aug"))
         gc.collect()
 
@@ -336,15 +337,15 @@ class OnceImageLidarDataset(Dataset):
         point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
             point_cloud, calib, og_size
         )
-        if self._depth_renderer:
-            pc1 = self._depth_renderer(point_cloud, calib, og_size)
-            if self._depth_renderer.aug:
-                pc2 = self._depth_renderer(point_cloud, calib, og_size)
-                point_cloud = torch.stack((pc1, pc2))
-            else:
-                point_cloud = pc1[None]  # add view dim
+        if self.depth_rendering:
+            metadata = {
+                "cam_intrinsic": calib["cam_intrinsic"].clone(),
+                "img_size": torch.tensor(og_size),
+            }
+        else:
+            metadata = {}
 
-        return image, point_cloud
+        return image, point_cloud, metadata
 
     def map_index(self, index):
         sequence_id, frame_id = self._frames[index // len(CAM_NAMES)]
@@ -681,7 +682,11 @@ def _collate_fn(batch):
     if len(batched_pc[0].shape) == 4:
         # depth map can be batched into a single tensor
         batched_pc = default_collate(batched_pc)
-    return batched_img, batched_pc
+
+    # elem2 is dict of metadata, each element is a tensor
+    # we want to stack them into a single tensor
+    batched_metadata = default_collate([elem[2] for elem in batch])
+    return batched_img, batched_pc, batched_metadata
 
 
 def build_loader(

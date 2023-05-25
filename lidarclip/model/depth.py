@@ -2,9 +2,15 @@ import clip
 from einops import rearrange
 import torch.nn as nn
 import torch
+from typing import List
 
 from lidarclip.loader import build_loader
 from lightly.loss.ntx_ent_loss import NTXentLoss
+
+try:
+    from lidarclip.depth_renderer import DepthRenderer
+except ImportError:
+    print("DepthRenderer not available, depth rendering will not work")
 
 
 class DepthLoss(nn.Module):
@@ -34,20 +40,26 @@ class DepthLoss(nn.Module):
         depth2_feats = lidar_feats[:, 1]
         depth_feats = (depth1_feats + depth2_feats) * 0.5
         img_loss = self.criterion(depth_feats, img_feats)
-        print("img ", img_loss)
+        # print("img ", img_loss)
         depth_loss = self.criterion(depth1_feats, depth2_feats)
-        print("depth: ", depth_loss)
+        # print("depth: ", depth_loss)
         weighted_loss = img_loss + depth_loss / (self.weights**2) + torch.log(self.weights + 1)
-        print("weighted: ", weighted_loss)
+        # print("weighted: ", weighted_loss)
         return weighted_loss
 
 
 class DepthEncoder(nn.Module):
-    def __init__(self, clip_model_name):
+    def __init__(self, clip_model_name, depth_aug=False):
         super().__init__()
         self._clip, _ = clip.load(clip_model_name)
+        self._depth_renderer = DepthRenderer(aug=depth_aug)
 
-    def forward(self, point_cloud, no_pooling=False, return_attention=False):
+    def forward(self, point_cloud, no_pooling=False, return_attention=False, metadata=dict()):
+        cam_intrinsic = metadata["cam_intrinsic"].to(point_cloud[0].device)
+        img_size = metadata["img_size"]
+        point_cloud = self.render_depth(
+            point_cloud, cam_intrinsic, img_size, aug=self._depth_renderer.aug
+        )
         assert (
             len(point_cloud.shape) == 5
         ), "Point cloud must have shape (B, V, C, H, W), where V is the number of views"
@@ -61,13 +73,47 @@ class DepthEncoder(nn.Module):
         feats = self._clip.encode_image(point_cloud)
         return rearrange(feats, "(b v) c -> b v c", v=n_views), None  # no attention for now
 
-    # def render_depth(self, point_clouds: List[torch.Tensor], aug: bool = False) -> torch.Tensor:
-    #     depth1s = []
-    #     depth2s = []
-    #     for point_cloud in point_clouds:
-    #         # from kitti forward, left, up to torch3d left, up, forward  (reflectance is not used)
-    #         point_cloud = point_cloud[:, [1, 2, 0]]
-    #     res = self._clip.visual.input_resolution
+    def render_depth(
+        self,
+        point_clouds: List[torch.Tensor],
+        cam_intrinsics: torch.Tensor,
+        img_size: torch.Tensor,
+        aug: bool = False,
+    ) -> torch.Tensor:
+        max_num_points = max([point_cloud.shape[0] for point_cloud in point_clouds])
+        # assert all img_size are the same
+        assert all(img_size[:, 0] == img_size[0, 0]) and all(
+            img_size[:, 1] == img_size[0, 1]
+        ), "All images must have the same size"
+        img_size = tuple(img_size[0].cpu().to(torch.float).tolist())
+        # pad point clouds to the same size
+        for i, point_cloud in enumerate(point_clouds):
+            num_points = point_cloud.shape[0]
+            point_clouds[i] = nn.functional.pad(point_cloud, (0, 0, 0, max_num_points - num_points))
+            point_clouds[i][num_points:, 0] = -10  # put padded points behind the camera
+        point_clouds = torch.stack(point_clouds)
+        pc_shape = point_clouds.shape  # (B, N_points, 3)
+        if aug:
+            cam_intrinsics_shape = cam_intrinsics.shape
+            # repeat point clouds and cam_intrinsics twice
+            point_clouds = (
+                point_clouds.unsqueeze(1)
+                .repeat(1, 2, 1, 1)
+                .view(pc_shape[0] * 2, pc_shape[1], pc_shape[2])
+            )
+            cam_intrinsics = (
+                cam_intrinsics.unsqueeze(1)
+                .repeat(1, 2, 1, 1)
+                .view(cam_intrinsics_shape[0] * 2, cam_intrinsics_shape[1], cam_intrinsics_shape[2])
+            )
+
+        rendered_pc = self._depth_renderer(point_clouds, cam_intrinsics, img_size)
+        if aug:
+            rendered_pc = rearrange(rendered_pc, "(b v) c h w -> b v c h w", v=2)
+        else:
+            # add view dimension
+            rendered_pc = rendered_pc.unsqueeze(1)
+        return rendered_pc
 
 
 if __name__ == "__main__":
