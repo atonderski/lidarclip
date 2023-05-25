@@ -70,7 +70,7 @@ def main(args):
         ):
             point_clouds, annos = batch[1:3]
             point_clouds = [pc.to("cuda") for pc in point_clouds]
-            cam_intrinsics = torch.stack([anno["cam_intrinsics"].to("cuda") for anno in annos])
+            cam_intrinsics = torch.stack([anno["cam_intrinsic"].to("cuda") for anno in annos])
             img_size = torch.stack([anno["img_size"].to("cuda") for anno in annos])
 
             rendered_point_clouds = model.lidar_encoder.render_depth(
