@@ -5,7 +5,11 @@ import torch
 from typing import List
 
 from lidarclip.loader import build_loader
-from lightly.loss.ntx_ent_loss import NTXentLoss
+
+try:
+    from lightly.loss.ntx_ent_loss import NTXentLoss
+except ImportError:
+    print("NTXentLoss not available, contrastive loss will not work")
 
 try:
     from lidarclip.depth_renderer import DepthRenderer
@@ -52,6 +56,7 @@ class DepthEncoder(nn.Module):
     def __init__(self, clip_model_name, depth_aug=False):
         super().__init__()
         self._clip, _ = clip.load(clip_model_name)
+        self._clip.to(torch.float32)
         self._depth_renderer = DepthRenderer(aug=depth_aug)
 
     def forward(self, point_cloud, no_pooling=False, return_attention=False, metadata=dict()):
@@ -107,7 +112,9 @@ class DepthEncoder(nn.Module):
                 .view(cam_intrinsics_shape[0] * 2, cam_intrinsics_shape[1], cam_intrinsics_shape[2])
             )
 
-        rendered_pc = self._depth_renderer(point_clouds, cam_intrinsics, img_size)
+        with torch.cuda.amp.autocast(enabled=False):
+            rendered_pc = self._depth_renderer(point_clouds, cam_intrinsics, img_size)
+
         if aug:
             rendered_pc = rearrange(rendered_pc, "(b v) c h w -> b v c h w", v=2)
         else:

@@ -21,7 +21,7 @@ singularity exec --nv \
   --bind /proj/nlp4adas/users/$USER/lidar-clippin/SST/mmdet3d/models/voxel_encoders/utils.py:/sst/mmdet3d/models/voxel_encoders/utils.py \
   --pwd /workspace/lidar-clippin/ \
   --env PYTHONPATH=/workspace/lidar-clippin/ \
-  /proj/nlp4adas/containers/lidar-clippin.sif \
+  /proj/nlp4adas/containers/lidar-clippin-alvis.sif \
   python3 -u train.py --checkpoint-save-dir=/checkpoints $@
 
 #

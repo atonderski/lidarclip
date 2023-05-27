@@ -8,7 +8,11 @@ from clip.model import CLIP
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch.nn import functional as F
-from torch_optimizer import Lamb
+
+try:
+    from torch_optimizer import Lamb
+except ImportError:
+    print("Got ImportError for torch_optmizer, Lamb not available")
 
 from lidarclip.loader import build_loader
 
@@ -67,6 +71,9 @@ class LidarClip(pl.LightningModule):
             lidar_features = self.all_gather(lidar_features, sync_grads=True).view(
                 -1, *lidar_features_shape[1:]
             )
+        if len(lidar_features.shape) == 3 and not isinstance(self.loss_func, DepthLoss):
+            assert lidar_features.shape[1] == 1, "Lidar features should only have a single view"
+            lidar_features = lidar_features.squeeze(1)
         loss = self.loss_func(image_features, lidar_features)
         self.log("train_loss", loss.detach())
         return loss
@@ -128,7 +135,6 @@ def train(
     clip_model, clip_preprocess = clip.load(clip_model_name, jit=False)
     clip_model.eval()
     clip_embed_dim = clip_model.visual.output_dim
-    model_type = model
     if model == "sst":
         lidar_encoder = LidarEncoderSST(
             "lidarclip/model/sst_encoder_only_config.py", clip_embed_dim
@@ -136,7 +142,7 @@ def train(
     elif model == "second":
         lidar_encoder = SECOND("lidarclip/model/centerpoint_encoder_only.py", clip_embed_dim)
     elif model == "depth":
-        lidar_encoder = DepthEncoder(clip_model_name, True)
+        lidar_encoder = DepthEncoder(clip_model_name, depth_aug=(loss_function == "depth"))
     else:
         raise NotImplementedError(f"model {model} not implemented yet")
     available_gpus = torch.cuda.device_count() or None
@@ -206,7 +212,7 @@ def train(
     )
     learningrate_callback = LearningRateMonitor(logging_interval="step")
     trainer = pl.Trainer(
-        precision=32 if model_type == "depth" else 16,
+        precision=16,
         accelerator=accelerator,
         devices=devices,
         limit_train_batches=None,
@@ -232,7 +238,7 @@ def parse_args():
     parser.add_argument("--checkpoint", required=False, default="")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--load-only-model", action="store_true")
     parser.add_argument("--resume-wandb-logging", action="store_true")
     parser.add_argument("--clip-model", default="ViT-L/14", help="which clip model to use")
