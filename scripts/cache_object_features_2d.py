@@ -133,7 +133,7 @@ def main(args):
         for batch_i, batch in tqdm(
             enumerate(loader), desc="Generating features", total=len(loader)
         ):
-            images, annos = batch[0], batch[2]
+            images, annos = batch[0], batch[3]
             images = images.to(DEVICE)
             if "vit" in args.clip_version.lower():
                 image_features = clip_vit_forward_no_pooling(model.visual, images)

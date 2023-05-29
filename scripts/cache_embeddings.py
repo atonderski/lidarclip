@@ -3,17 +3,17 @@ import os
 
 import clip
 import torch
-from mmcv.runner import load_checkpoint
 from tqdm import tqdm
 
 from lidarclip.anno_loader import build_anno_loader
 from lidarclip.loader import build_loader as build_dataonly_loader
 from lidarclip.model.sst import LidarEncoderSST
+from lidarclip.model.depth import DepthEncoder
 from train import LidarClip
 
 DEFAULT_DATA_PATHS = {
-    "once": "/proj/nlp4adas/datasets/once",
-    "nuscenes": "/proj/berzelius-2021-92/data/nuscenes",
+    "once": "/proj/adas-data/data/once",
+    "nuscenes": "/proj/adas-data/data/nuscenes",
 }
 
 """
@@ -23,13 +23,27 @@ DEFAULT_DATA_PATHS = {
 }
 """
 
+
 def load_model(args):
     clip_model, clip_preprocess = clip.load(args.clip_version)
-    lidar_encoder = LidarEncoderSST(
-        "lidarclip/model/sst_encoder_only_config.py", clip_model.visual.output_dim
+
+    if args.model == "depth":
+        lidar_encoder = DepthEncoder(args.clip_version, depth_aug=False)
+    elif args.model == "sst":
+        lidar_encoder = LidarEncoderSST(
+            "lidarclip/model/sst_encoder_only_config.py", clip_model.visual.output_dim
+        )
+    else:
+        raise ValueError(f"Unknown model {args.model}")
+    model = LidarClip.load_from_checkpoint(
+        args.checkpoint,
+        strict=False,
+        lidar_encoder=lidar_encoder,
+        clip_model=clip_model,
+        batch_size=1,
+        epoch_size=1,
     )
-    model = LidarClip(lidar_encoder, clip_model, 1, 1)
-    load_checkpoint(model, args.checkpoint, map_location="cpu")
+    # load_checkpoint(model, args.checkpoint, map_location="cpu")
     model.to("cuda")
     return model, clip_preprocess
 
@@ -61,20 +75,25 @@ def main(args):
     lidar_feats = []
     with torch.no_grad():
         for batch in tqdm(loader):
-            images, point_clouds = batch[:2]
+            images, point_clouds, metadata = batch[:3]
             point_clouds = [pc.to("cuda") for pc in point_clouds]
-            images = [img.to("cuda") for img in images]
-            images = torch.cat([i.unsqueeze(0) for i in images])
-            image_features = model.clip.encode_image(images)
-            lidar_features, _ = model.lidar_encoder(point_clouds, no_pooling=args.no_pooling)
-            img_feats.append(image_features.detach().cpu())
+            # images = [img.to("cuda") for img in images]
+            # images = torch.cat([i.unsqueeze(0) for i in images])
+            if not args.no_save_img:
+                images = images.to("cuda")
+                image_features = model.clip.encode_image(images)
+                img_feats.append(image_features.detach().cpu())
+            lidar_features, _ = model.lidar_encoder(
+                point_clouds, metadata=metadata, no_pooling=args.no_pooling
+            )
             lidar_feats.append(lidar_features.detach().cpu())
 
-    img_feats = torch.cat(img_feats, dim=0)
     lidar_feats = torch.cat(lidar_feats, dim=0)
-
-    torch.save(img_feats, img_path)
     torch.save(lidar_feats, lidar_path)
+
+    if not args.no_save_img:
+        img_feats = torch.cat(img_feats, dim=0)
+        torch.save(img_feats, img_path)
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,6 +101,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint", type=str, required=True, help="Full path to the checkpoint file"
     )
+    parser.add_argument("--model", type=str, default="sst", choices=["sst", "depth"])
     parser.add_argument("--clip-version", type=str, default="ViT-L/14")
     parser.add_argument("--once-datadir", type=str, default=None)
     parser.add_argument("--nuscenes-datadir", type=str, default=None)
@@ -91,6 +111,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--use-anno-loader", action="store_true")
     parser.add_argument("--dataset-name", type=str, default="once", choices=["once", "nuscenes"])
     parser.add_argument("--no-pooling", action="store_true")
+    parser.add_argument("--no-save-img", action="store_true")
     args = parser.parse_args()
     if not args.once_datadir:
         args.once_datadir = DEFAULT_DATA_PATHS["once"]

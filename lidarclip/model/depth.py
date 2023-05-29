@@ -146,7 +146,7 @@ if __name__ == "__main__":
     )
     iter_loader = iter(loader)
 
-    for i, (images, lidars) in enumerate(iter_loader):
+    for i, (images, lidars, metas) in enumerate(iter_loader):
         depths = depth_encoder(lidars)
         image = rearrange(images[0], "c h w -> h w c") * stds + means
         depth = rearrange(depths[0], "c h w -> h w c") * stds + means

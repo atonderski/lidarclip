@@ -146,7 +146,6 @@ class OnceFullDataset(OnceImageLidarDataset):
         skip_anno: bool = False,
         return_points_per_obj: bool = False,
         skip_anno_transform: bool = False,
-        depth_rendering=False,
         **kwargs,
     ):
         assert (
@@ -164,7 +163,6 @@ class OnceFullDataset(OnceImageLidarDataset):
             data_root=data_root,
             img_transform=img_transform,
             split=split,
-            depth_rendering=depth_rendering,
         )
         self._skip_anno = skip_anno
         self._skip_data = skip_data
@@ -229,6 +227,8 @@ class OnceFullDataset(OnceImageLidarDataset):
             point_cloud = self._transform_lidar_and_remove_points_outside_cam_torch(
                 point_cloud, calib, og_size
             )
+            meta_info["cam_intrinsic"] = calib["cam_intrinsic"].clone()
+            meta_info["img_size"] = torch.tensor(og_size)
 
         if self._skip_anno:
             annos = None
@@ -245,6 +245,7 @@ class OnceFullDataset(OnceImageLidarDataset):
             if self._return_points_per_obj:
                 # x,y,z,l,w,h,rz in kitti format
                 # (x,y,z is the center of the box) x is forward, y is left, z is up
+                assert not self._skip_data, "Cannot return points per object if skipping data."
                 points_per_obj = self._get_points_per_obj(annos, point_cloud)
                 annos["points_per_obj"] = points_per_obj
             annos["seq_info"] = {
@@ -254,13 +255,7 @@ class OnceFullDataset(OnceImageLidarDataset):
                 "seq_idx": seq_idx,
             }
 
-        if self.depth_rendering:
-            assert not self._skip_data, "Cannot render depth if skipping data."
-            annos = annos or dict()
-            annos["cam_intrinsic"] = calib["cam_intrinsic"].clone()
-            annos["img_size"] = torch.tensor(og_size)
-
-        return image, point_cloud, annos, meta_info
+        return image, point_cloud, meta_info, annos
 
     def _transform_boxes(self, calib, boxes_3d):
         transformed_boxes_center_coord = self._transform_lidar_and_remove_points_outside_cam_torch(
@@ -382,9 +377,9 @@ class OnceFullDataset(OnceImageLidarDataset):
 def _collate_fn(batch):
     batched_img = default_collate([elem[0] for elem in batch])
     batched_pc = [elem[1] for elem in batch]
-    batched_annos = [elem[2] for elem in batch]
-    batched_metas = [elem[3] for elem in batch]
-    return batched_img, batched_pc, batched_annos, batched_metas
+    batched_metas = default_collate([elem[2] for elem in batch])
+    batched_annos = [elem[3] for elem in batch]
+    return batched_img, batched_pc, batched_metas, batched_annos
 
 
 def build_anno_loader(
@@ -403,7 +398,6 @@ def build_anno_loader(
     nuscenes_datadir="/nuscenes",
     dataset_name="once",
     skip_anno_transform=False,
-    depth_rendering=False,
 ):
     if dataset_name == "once":
         dataset = OnceFullDataset(
@@ -414,7 +408,6 @@ def build_anno_loader(
             skip_anno=skip_anno,
             return_points_per_obj=return_points_per_obj,
             skip_anno_transform=skip_anno_transform,
-            depth_rendering=depth_rendering,
         )
     elif dataset_name == "nuscenes":
         del skip_anno_transform  # This is a legacy flag for ONCE
@@ -479,7 +472,7 @@ def demo_nuscenes():
         skip_data=True,
         dataset_name="nuscenes",
     )
-    images, lidars, annos, metas = next(iter(loader))
+    images, lidars, metas, annos = next(iter(loader))
 
 
 if __name__ == "__main__":
