@@ -67,13 +67,11 @@ def main(args):
         for batch_i, batch in tqdm(
             enumerate(loader), desc="Generating features", total=len(loader)
         ):
-            _, point_clouds, _, annos = batch
+            _, point_clouds, meta_info, annos = batch
             point_clouds = [pc.to("cuda") for pc in point_clouds]
-            cam_intrinsics = torch.stack([anno["cam_intrinsic"].to("cuda") for anno in annos])
-            img_size = torch.stack([anno["img_size"].to("cuda") for anno in annos])
 
             rendered_point_clouds = model.lidar_encoder.render_depth(
-                point_clouds, cam_intrinsics, img_size, False
+                point_clouds, meta_info["cam_intrinsic"], meta_info["img_size"], False
             )
 
             rendered_point_clouds = rearrange(rendered_point_clouds, "b v c h w -> (b v) c h w")
