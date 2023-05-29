@@ -35,6 +35,7 @@ class LidarClip(pl.LightningModule):
         epoch_size: int,
         loss: str = "mse",
         optimizer: str = "adam",
+        peak_lr: float = 1e-3,
         do_gather: bool = False,
     ):
         super().__init__()
@@ -53,6 +54,7 @@ class LidarClip(pl.LightningModule):
         else:
             raise ValueError(f"Loss {loss} not supported")
         self._optimizer_type = optimizer
+        self._peak_lr = peak_lr
         self.do_gather = do_gather
 
     def training_step(self, batch, batch_idx):
@@ -101,7 +103,7 @@ class LidarClip(pl.LightningModule):
             optimizer = torch.optim.Adam(self.lidar_encoder.parameters(), lr=1e-5)
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer,
-                max_lr=1e-3,
+                max_lr=self._peak_lr,
                 # total_steps=self.trainer.estimated_stepping_batches,
                 pct_start=0.1,
                 steps_per_epoch=steps_per_epoch,
@@ -171,6 +173,7 @@ def train(
         len(train_loader) / devices,
         loss_function,
         args.optimizer,
+        args.peak_lr,
         args.do_gather,
     )
     if len(checkpoint_path) and resume_wandb_logging:
@@ -255,6 +258,7 @@ def parse_args():
     parser.add_argument("--dataset-name", default="once")
     parser.add_argument("--model", default="sst")
     parser.add_argument("--optimizer", default="adam")
+    parser.add_argument("--peak-lr", default=1e-3, type=float)
     parser.add_argument("--do-gather", action="store_true")
     args = parser.parse_args()
     assert args.name, "Empty name is not allowed"
