@@ -39,6 +39,7 @@ def load_model(args):
     model = LidarClip(lidar_encoder, clip_model, 1, 1)
     load_checkpoint(model, args.checkpoint, map_location="cpu")
     model.to("cuda")
+    model.to(torch.float32)
     return model, clip_preprocess
 
 
