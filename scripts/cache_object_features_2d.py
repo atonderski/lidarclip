@@ -46,7 +46,7 @@ def resnet_attention_no_pooling(model, x):
 
 
 def clip_vit_forward_no_pooling(model, x):
-    x = model.conv1()  # shape = [*, width, grid, grid]
+    x = model.conv1(x)  # shape = [*, width, grid, grid]
     x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
     x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
     x = torch.cat(
