@@ -31,7 +31,7 @@ class LidarClip(pl.LightningModule):
         self,
         lidar_encoder: torch.nn.Module,
         clip_model: CLIP,
-        batch_size: int,
+        batch_size: int,  # TODO: not used, delete
         epoch_size: int,
         loss: str = "mse",
         optimizer: str = "adam",
@@ -161,7 +161,6 @@ def train(
         nuscenes_datadir=nuscenes_datadir,
         nuscenes_split=nuscenes_split,
         dataset_name=dataset_name,
-        depth_rendering="aug" if model == "depth" else False,
     )
 
     wandb_id = None

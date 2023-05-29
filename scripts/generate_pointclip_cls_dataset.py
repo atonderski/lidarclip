@@ -94,7 +94,7 @@ def main(args):
     with torch.no_grad():
         for batch in tqdm(loader):
             i = i + 1
-            images, point_clouds, annos, meta_info = batch
+            images, point_clouds, meta_info, annos = batch
 
             if args.visulize_objects:
                 for anno in annos:

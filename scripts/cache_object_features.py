@@ -58,7 +58,7 @@ def main(args):
         for batch_i, batch in tqdm(
             enumerate(loader), desc="Generating features", total=len(loader)
         ):
-            point_clouds, annos = batch[1:3]
+            _, point_clouds, _, annos = batch
             point_clouds = [pc.to("cuda") for pc in point_clouds]
             lidar_features, _ = model.lidar_encoder(point_clouds, no_pooling=True)
             bev_features = rearrange(lidar_features, "(h w) n c -> n h w c", h=80, w=80)

@@ -61,7 +61,7 @@ def main(args):
         for batch_i, batch in tqdm(
             enumerate(loader), desc="Generating features", total=len(loader)
         ):
-            images, annos = batch[0], batch[2]
+            images, annos = batch[0], batch[3]
             for i, image in enumerate(images):
                 for name, box2d, box3d in zip(
                     annos[i]["names"], annos[i]["boxes_2d"], annos[i]["boxes_3d"]

@@ -54,7 +54,6 @@ def main(args):
         num_workers=8,
         split=args.split,
         dataset_name=args.dataset_name,
-        depth_rendering="aug",
     )
 
     obj_feats_path = f"{args.prefix}_clip2point_objs.pt"
@@ -68,7 +67,7 @@ def main(args):
         for batch_i, batch in tqdm(
             enumerate(loader), desc="Generating features", total=len(loader)
         ):
-            point_clouds, annos = batch[1:3]
+            _, point_clouds, _, annos = batch
             point_clouds = [pc.to("cuda") for pc in point_clouds]
             cam_intrinsics = torch.stack([anno["cam_intrinsic"].to("cuda") for anno in annos])
             img_size = torch.stack([anno["img_size"].to("cuda") for anno in annos])
