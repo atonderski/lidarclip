@@ -43,6 +43,6 @@ RUN pip install git+https://github.com/openai/CLIP.git
 RUN pip install \
     wandb \
     pipenv \
-    pytorch_lightning
+    pytorch_lightning==1.6.2
 
 RUN pip install --upgrade numpy
