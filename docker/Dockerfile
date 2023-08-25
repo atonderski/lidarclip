@@ -23,8 +23,9 @@ RUN pip install mmsegmentation==0.14.1
 
 # Install MMDetection3D requirements
 RUN conda clean --all
-RUN git clone https://github.com/TuSimple/SST.git /sst
+RUN git clone https://github.com/tusen-ai/SST.git /sst
 WORKDIR /sst
+RUN git checkout 8b795c40632c3868b091dc032fff7099c0d21bc5
 RUN pip install llvmlite --ignore-installed
 RUN pip install pyyaml --ignore-installed
 RUN pip install -r requirements/build.txt
@@ -43,6 +44,8 @@ RUN pip install git+https://github.com/openai/CLIP.git
 RUN pip install \
     wandb \
     pipenv \
-    pytorch_lightning==1.6.2
+    pytorch_lightning==1.6.2 
 
-RUN pip install --upgrade numpy
+RUN pip install "numpy<1.24.0"
+
+RUN pip install opencv-python==4.5.5.64
