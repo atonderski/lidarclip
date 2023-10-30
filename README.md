@@ -1,6 +1,6 @@
 # LidarCLIP
 
-This is the official implementation of [LidarCLIP or: How I Learned to Talk to Point Clouds](https://arxiv.org/abs/2212.06858).
+This is the official implementation of the WACV 2024 paper [LidarCLIP or: How I Learned to Talk to Point Clouds](https://arxiv.org/abs/2212.06858).
 
 ![LidarCLIP overview](docs/method_overview.png)
 ## Checkpoints
@@ -30,3 +30,16 @@ Note that some paths have to be modified in the notebooks to point your desired 
 ## Dataset preparation
 
 We refer to the official download and preparation instructions for [ONCE](https://once-for-auto-driving.github.io/download.html) and [NuScenes](https://nuscenes.org/nuscenes#download). Once the dataset directories are set up according to the official instructions, our code works without any additional steps. Note that NuScenes is entirely optional and only used for evaluating domain shift capabilities.
+
+## Citation
+
+If you find this work useful, please cite
+
+```
+@inproceedings{lidarclip2024,
+  title={LidarCLIP or: How I Learned to Talk to Point Clouds},
+  author={Hess, Georg and Tonderski, Adam and Petersson, Christoffer and {\AA}str{\"o}m, Kalle} and Svensson, Lennart,
+  year = {2024},
+  booktitle={Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision},
+}
+```
