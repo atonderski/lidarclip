@@ -29,7 +29,7 @@ Note that some paths have to be modified in the notebooks to point your desired 
 
 ## Dataset preparation
 
-We refer to the official download and preparation instructions for [ONCE](https://once-for-auto-driving.github.io/download.html) and [NuScenes](https://nuscenes.org/nuscenes#download). Once the dataset directories are set up according to the official instructions, our code works without any additional steps. Note that NuScenes is entirely optional and only used for evaluating domain shift capabilities.
+We refer to the official download and preparation instructions for [ONCE](https://once-for-auto-driving.github.io/download.html) and [NuScenes](https://nuscenes.org/nuscenes#download). For ONCE, you'll also need the ImageSets folder from [the ONCE devkit](https://github.com/once-for-auto-driving/once_devkit). Once the dataset directories are set up according to the official instructions, our code works without any additional steps. Note that NuScenes is entirely optional and only used for evaluating domain shift capabilities.
 
 ## Citation
 
